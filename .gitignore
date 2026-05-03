@@ -1,7 +1,18 @@
-venv/
-__pycache__/
-*.pyc
+# Environment variables (Crucial for Security!)
 .env
-instance/
-.vscode/
+
+# Python junk
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Database & Instance folders
 *.db
+*.sqlite3
+instance/
+
+# IDE & OS
+.vscode/
+.DS_Store
