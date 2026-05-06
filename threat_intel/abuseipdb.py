@@ -86,7 +86,8 @@ def query_ip(ip_address):
 
             # ── Handle HTTP error codes ───────────────────────────────────
             if response.status_code == 200:
-                # Success — parse and return the data
+                # check rate limit headers before returning 
+                handle_rate_limit(response.headers)
                 return parse_response(ip_address, response.json())
 
             elif response.status_code == 401:
@@ -163,12 +164,12 @@ def parse_response(ip_address, json_response):
     usage_type             = data.get("usageType",             "Unknown")
 
     # ── Normalise score from 0-100 to 1.0-10.0 ───────────────────────────
-    # Formula: severity = (confidence / 100) * 9 + 1
+    # Formula: severity = confidence / 100 (floored at 1.0)
     # This maps:
     #   0%   confidence → 1.0  (clean IP, minimal risk)
     #   50%  confidence → 5.5  (medium risk)
     #   100% confidence → 10.0 (definitely malicious)
-    severity_score = round((abuse_confidence_score / 100) * 9 + 1, 2)
+    severity_score = max(1.0, round(abuse_confidence_score / 10, 2))
 
     return {
         "ip_address":             ip_address,
@@ -180,28 +181,78 @@ def parse_response(ip_address, json_response):
         "source_api":             "abuseipdb",
         "queried_at":             datetime.now(timezone.utc).isoformat(),
         "raw":                    data   # full response stored for details_json in DB
-    }
+        }
 
 
 # ── Function 3: Normalise score (standalone utility) ─────────────────────
-def normalise_score(abuse_confidence_score):
+def normalise_abuseipdb(response):
     """
-    Converts a raw AbuseIPDB confidence score (0-100) to
-    the system's standard severity scale (1.0-10.0).
+    Converts an AbuseIPDB API response to a severity score 1.0-10.0.
 
-    Used by the Risk Correlation Engine later.
+    Formula: severity = abuseConfidenceScore / 10
+    Maps 0-100% confidence directly to 0-10, floored at 1.0.
+
+    Edge cases:
+      - IP not found / score = 0  → returns 1.0  (minimum risk)
+      - response is None          → returns None  (logs the error)
+      - score out of range        → clamped to 0-100 before calculation
+    """
+    # Edge case — API call completely failed
+    if response is None:
+        print("[ABUSEIPDB] WARNING: response is None — API error occurred")
+        return None
+
+    # Edge case — response exists but data block is missing
+    if "abuse_confidence_score" not in response:
+        print("[ABUSEIPDB] WARNING: no confidence score in response — defaulting to 1.0")
+        return 1.0
+
+    raw_score = response["abuse_confidence_score"]
+
+    # Edge case — IP not found or never reported (score = 0)
+    if raw_score == 0:
+        return 1.0  # not zero — floor at 1.0 (still unknown risk)
+
+    # Clamp to valid range 0-100 just in case API returns unexpected value
+    raw_score = max(0, min(100, raw_score))
+
+    severity = round(raw_score / 10, 2)
+
+    # Floor at 1.0 — nothing gets a zero score in our system
+    return max(1.0, severity)
+
+#── Function : Handle API rate limits ─────────────────────────────────
+def handle_rate_limit(response_headers):
+    """
+    Checks AbuseIPDB response headers for rate limit status.
+    Adds a 1-second delay if we are getting close to the limit.
+
+    AbuseIPDB free tier = 1000 requests per day.
+    Headers returned:
+      X-RateLimit-Limit     : total allowed (1000)
+      X-RateLimit-Remaining : how many left today
+      X-RateLimit-Reset     : unix timestamp when limit resets
 
     Args:
-        abuse_confidence_score (int): raw score from AbuseIPDB e.g. 85
-
-    Returns:
-        float: severity score between 1.0 and 10.0
+        response_headers: the headers object from a requests.Response
     """
-    if abuse_confidence_score is None:
-        return 1.0  # default to lowest risk if score missing
-    score = max(0, min(100, abuse_confidence_score))  # clamp to 0-100
-    return round((score / 100) * 9 + 1, 2)
+    remaining = response_headers.get("X-RateLimit-Remaining")
 
+    if remaining is None:
+        return  # headers not present — skip check
+
+    remaining = int(remaining)
+
+    if remaining <= 0:
+        print("[ABUSEIPDB] Daily rate limit reached. Requests will fail until reset.")
+        time.sleep(60)  # long pause — no point hammering a blocked API
+
+    elif remaining <= 50:
+        # Getting close to the limit — slow down
+        print(f"[ABUSEIPDB] Rate limit warning: only {remaining} requests remaining today.")
+        time.sleep(1)   # 1-second delay between requests
+
+    # If plenty remaining — no delay needed
 
 # ── Function 4: Print result ──────────────────────────────────────────────
 def print_result(result):
