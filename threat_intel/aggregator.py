@@ -1,0 +1,256 @@
+"""
+threat_intel/aggregator.py
+--------------------------
+Threat Intelligence Aggregator — central score calculator.
+
+This is the most important module in the threat intel layer.
+It calls all 3 APIs (AbuseIPDB, VirusTotal, AlienVault OTX),
+collects their individual scores, and computes one composite
+threat score for use by the Risk Correlation Engine.
+
+Weighted average:
+  AbuseIPDB  : 40%  — community abuse reports (most reliable for malicious IPs)
+  VirusTotal : 40%  — antivirus engine detections (most reliable for malware)
+  OTX        : 20%  — threat intelligence pulses (useful but lower signal)
+
+Why these weights?
+  AbuseIPDB and VirusTotal are more precise and directly measure
+  malicious activity. OTX pulses are valuable but can include
+  low-confidence reports, so it gets a lower weight.
+"""
+
+import time
+from datetime import datetime, timezone
+from threat_intel.abuseipdb  import query_ip as query_abuseipdb,  normalise_abuseipdb
+from threat_intel.virustotal import query_ip as query_virustotal, normalise_virustotal
+from threat_intel.alienvault import query_ip as query_otx,        normalise_alienvault
+
+# ── Weights — must sum to 1.0 ─────────────────────────────────────────────
+WEIGHT_ABUSEIPDB  = 0.40
+WEIGHT_VIRUSTOTAL = 0.40
+WEIGHT_OTX        = 0.20
+
+
+# ── Main Function: Get Composite Threat Score ─────────────────────────────
+def get_composite_threat_score(ip_address):
+    """
+    Queries all 3 threat intelligence APIs for one IP address and
+    returns a single composite threat score plus individual scores.
+
+    Steps:
+      1. Query AbuseIPDB  → get severity score (or None on failure)
+      2. Query VirusTotal → get severity score (or None on failure)
+      3. Query OTX        → get severity score (or None on failure)
+      4. Compute weighted average using only the APIs that succeeded
+         (if one API fails, rebalance weights across the remaining two)
+      5. Return full result dict
+
+    Args:
+        ip_address (str): The IP to analyse e.g. '185.220.101.1'
+
+    Returns:
+        dict:
+        {
+            "ip":               str,
+            "abuseipdb_score":  float or None,
+            "virustotal_score": float or None,
+            "otx_score":        float or None,
+            "composite_score":  float,           # final weighted score 1.0-10.0
+            "severity_label":   str,             # Low / Medium / High
+            "apis_succeeded":   int,             # how many of 3 APIs returned data
+            "queried_at":       str,
+            "raw": {
+                "abuseipdb":  dict or None,
+                "virustotal": dict or None,
+                "otx":        dict or None,
+            }
+        }
+    """
+    print(f"\n[AGGREGATOR] Analysing IP: {ip_address}")
+    print(f"[AGGREGATOR] Querying 3 threat intelligence APIs...")
+
+    raw_results = {}
+
+    # ── Step 1: Query AbuseIPDB ───────────────────────────────────────────
+    print(f"[AGGREGATOR] 1/3 AbuseIPDB...")
+    abuseipdb_raw    = query_abuseipdb(ip_address)
+    abuseipdb_score  = normalise_abuseipdb(abuseipdb_raw)
+    raw_results["abuseipdb"] = abuseipdb_raw
+    time.sleep(1)   # small delay between API calls
+
+    # ── Step 2: Query VirusTotal ──────────────────────────────────────────
+    print(f"[AGGREGATOR] 2/3 VirusTotal...")
+    virustotal_raw   = query_virustotal(ip_address)
+    virustotal_score = normalise_virustotal(
+        {
+            "malicious_count":  virustotal_raw.get("malicious_count",  0),
+            "suspicious_count": virustotal_raw.get("suspicious_count", 0),
+            "harmless_count":   virustotal_raw.get("harmless_count",   0),
+            "total_engines":    virustotal_raw.get("total_engines",    0),
+            "reputation":       virustotal_raw.get("reputation",       0),
+        } if virustotal_raw else None
+    )
+    raw_results["virustotal"] = virustotal_raw
+    time.sleep(1)
+
+    # ── Step 3: Query AlienVault OTX ─────────────────────────────────────
+    print(f"[AGGREGATOR] 3/3 AlienVault OTX...")
+    otx_raw   = query_otx(ip_address)
+    otx_score = normalise_alienvault(
+        {
+            "pulse_count":      otx_raw.get("pulse_count",      0),
+            "tags":             otx_raw.get("tags",             []),
+            "malware_families": otx_raw.get("malware_families", []),
+            "reputation":       otx_raw.get("reputation",       0),
+        } if otx_raw else None
+    )
+    raw_results["otx"] = otx_raw
+
+    # ── Step 4: Compute weighted composite score ──────────────────────────
+    composite_score = _compute_weighted_average(
+        abuseipdb_score,
+        virustotal_score,
+        otx_score
+    )
+
+    # ── Step 5: Assign severity label ────────────────────────────────────
+    severity_label = _get_severity_label(composite_score)
+
+    # Count how many APIs succeeded
+    apis_succeeded = sum(1 for s in [abuseipdb_score, virustotal_score, otx_score]
+                         if s is not None)
+
+    result = {
+        "ip":               ip_address,
+        "abuseipdb_score":  abuseipdb_score,
+        "virustotal_score": virustotal_score,
+        "otx_score":        otx_score,
+        "composite_score":  composite_score,
+        "severity_label":   severity_label,
+        "apis_succeeded":   apis_succeeded,
+        "queried_at":       datetime.now(timezone.utc).isoformat(),
+        "raw":              raw_results,
+    }
+
+    _print_summary(result)
+    return result
+
+
+# ── Helper: Weighted Average ──────────────────────────────────────────────
+def _compute_weighted_average(abuseipdb_score, virustotal_score, otx_score):
+    """
+    Computes the weighted average of the three API scores.
+
+    If one or more APIs failed (returned None), the weights of the
+    remaining APIs are rebalanced proportionally so they still sum to 1.0.
+
+    Examples:
+      All 3 succeed: (score_a * 0.4) + (score_v * 0.4) + (score_o * 0.2)
+      OTX fails:     (score_a * 0.5) + (score_v * 0.5)   [rebalanced]
+      Only 1 works:  that score is used as-is
+
+    Args:
+        abuseipdb_score  (float|None)
+        virustotal_score (float|None)
+        otx_score        (float|None)
+
+    Returns:
+        float: composite score 1.0-10.0
+    """
+    scores_and_weights = [
+        (abuseipdb_score,  WEIGHT_ABUSEIPDB),
+        (virustotal_score, WEIGHT_VIRUSTOTAL),
+        (otx_score,        WEIGHT_OTX),
+    ]
+
+    # Filter out any None scores (failed API calls)
+    valid = [(score, weight) for score, weight in scores_and_weights
+             if score is not None]
+
+    if not valid:
+        # All 3 APIs failed — default to minimum risk
+        print("[AGGREGATOR] WARNING: All 3 APIs failed. Defaulting composite to 1.0")
+        return 1.0
+
+    # Rebalance weights to sum to 1.0
+    total_weight = sum(w for _, w in valid)
+    weighted_sum = sum(score * (weight / total_weight)
+                       for score, weight in valid)
+
+    return round(max(1.0, min(10.0, weighted_sum)), 2)
+
+
+# ── Helper: Severity Label ────────────────────────────────────────────────
+def _get_severity_label(composite_score):
+    """
+    Maps composite score to a human-readable severity label.
+
+    Thresholds match the Risk Correlation Engine (Week 3):
+      1.0 – 3.9  → Low
+      4.0 – 6.9  → Medium
+      7.0 – 10.0 → High
+    """
+    if composite_score >= 7.0:
+        return "High"
+    elif composite_score >= 4.0:
+        return "Medium"
+    else:
+        return "Low"
+
+
+# ── Helper: Print Summary ─────────────────────────────────────────────────
+def _print_summary(result):
+    score = result["composite_score"]
+    label = result["severity_label"]
+
+    if label == "High":
+        indicator = "⚠  HIGH"
+    elif label == "Medium":
+        indicator = "~  MEDIUM"
+    else:
+        indicator = "✓  LOW"
+
+    print(f"\n[AGGREGATOR] ── Results for {result['ip']} ──")
+    print(f"  AbuseIPDB  (40%) : {result['abuseipdb_score']  or 'FAILED'}")
+    print(f"  VirusTotal (40%) : {result['virustotal_score'] or 'FAILED'}")
+    print(f"  OTX        (20%) : {result['otx_score']        or 'FAILED'}")
+    print(f"  ─────────────────────────────────")
+    print(f"  Composite Score  : {score}/10   [{indicator}]")
+    print(f"  APIs Succeeded   : {result['apis_succeeded']}/3")
+    print()
+
+
+# ── Run directly to test ──────────────────────────────────────────────────
+if __name__ == "__main__":
+
+    TEST_IPS = [
+        "185.220.101.1",   # Tor exit node    — expect HIGH composite
+        "8.8.8.8",         # Google DNS       — expect LOW composite
+        "192.168.100.1",   # Your router      — expect LOW composite
+    ]
+
+    print("\n" + "="*60)
+    print("  Threat Intelligence Aggregator — Test Run")
+    print("="*60)
+    print(f"  Testing {len(TEST_IPS)} IPs across AbuseIPDB + VirusTotal + OTX")
+    print(f"  Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    print("="*60)
+
+    all_results = []
+    for ip in TEST_IPS:
+        result = get_composite_threat_score(ip)
+        all_results.append(result)
+        time.sleep(2)  # pause between full IP analyses
+
+    # ── Final summary table ───────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("  FINAL COMPOSITE SCORES")
+    print("="*60)
+    print(f"  {'IP':<20} {'AbuseIPDB':>10} {'VT':>8} {'OTX':>8} {'COMPOSITE':>12} {'LABEL':>8}")
+    print("  " + "-"*58)
+    for r in all_results:
+        ab  = f"{r['abuseipdb_score']:.1f}"  if r['abuseipdb_score']  else "FAIL"
+        vt  = f"{r['virustotal_score']:.1f}" if r['virustotal_score'] else "FAIL"
+        otx = f"{r['otx_score']:.1f}"        if r['otx_score']        else "FAIL"
+        print(f"  {r['ip']:<20} {ab:>10} {vt:>8} {otx:>8} {r['composite_score']:>12} {r['severity_label']:>8}")
+    print("="*60 + "\n")
