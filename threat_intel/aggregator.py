@@ -21,10 +21,14 @@ Why these weights?
 
 import time
 from datetime import datetime, timezone
+import json
+
+#your threat modules
 from threat_intel.abuseipdb  import query_ip as query_abuseipdb,  normalise_abuseipdb
 from threat_intel.virustotal import query_ip as query_virustotal, normalise_virustotal
 from threat_intel.alienvault import query_ip as query_otx,        normalise_alienvault
-
+from db.database import get_session
+from db.models import ThreatRecord
 # ── Weights — must sum to 1.0 ─────────────────────────────────────────────
 WEIGHT_ABUSEIPDB  = 0.40
 WEIGHT_VIRUSTOTAL = 0.40
@@ -223,28 +227,63 @@ def _print_summary(result):
 # ── Run directly to test ──────────────────────────────────────────────────
 if __name__ == "__main__":
 
+    # Day 13 Test Batch (5 IPs including your loopback, public IP, and threat cases)
     TEST_IPS = [
-        "185.220.101.1",   # Tor exit node    — expect HIGH composite
-        "8.8.8.8",         # Google DNS       — expect LOW composite
-        "192.168.100.1",   # Your router      — expect LOW composite
+        "127.0.0.1",       # Loopback
+        "129.222.187.29",  # Your current Public IP
+        "8.8.8.8",         # Google DNS
+        "1.1.1.1",         # Cloudflare DNS
+        "185.220.101.1",   # Tor exit node — expect HIGH composite
     ]
 
     print("\n" + "="*60)
-    print("  Threat Intelligence Aggregator — Test Run")
+    print("  Threat Intelligence Aggregator — Integration Storage Test")
     print("="*60)
     print(f"  Testing {len(TEST_IPS)} IPs across AbuseIPDB + VirusTotal + OTX")
     print(f"  Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC")
     print("="*60)
 
     all_results = []
+    
     for ip in TEST_IPS:
+        # Task 1: Generate the live API scores and composite score
         result = get_composite_threat_score(ip)
         all_results.append(result)
-        time.sleep(2)  # pause between full IP analyses
+        
+        # ── Task 3: Save results to ThreatRecords table utilizing get_session() ──
+        session = get_session()
+        try:
+            import json  # Ensure json is imported to stringify raw details
+            
+            new_record = ThreatRecord(
+                ip_address     = result["ip"],
+                source_api     = "aggregated_pipeline",
+                severity_score = result["composite_score"],
+                details_json   = json.dumps({
+                    "abuseipdb_score":  result["abuseipdb_score"],
+                    "virustotal_score": result["virustotal_score"],
+                    "otx_score":        result["otx_score"],
+                    "apis_succeeded":   result["apis_succeeded"]
+                }),
+                queried_at     = datetime.now(timezone.utc)
+            )
+            
+            session.add(new_record)
+            session.commit()
+            print(f"[DB SUCCESS] Archived ThreatRecord for {ip} into dev.db.")
+            
+        except Exception as e:
+            session.rollback()
+            print(f"[DB ERROR] Failed to save record for {ip}: {e}")
+            
+        finally:
+            session.close() # Safely release connection back to SQLite
+            
+        time.sleep(2)  # Pause to respect API rate limits
 
     # ── Final summary table ───────────────────────────────────────────────
     print("\n" + "="*60)
-    print("  FINAL COMPOSITE SCORES")
+    print("  FINAL COMPOSITE SCORES (SAVED TO DATABASE)")
     print("="*60)
     print(f"  {'IP':<20} {'AbuseIPDB':>10} {'VT':>8} {'OTX':>8} {'COMPOSITE':>12} {'LABEL':>8}")
     print("  " + "-"*58)

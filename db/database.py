@@ -10,7 +10,7 @@ Handles all database setup for the IP Risk Profiler:
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base, Asset, ThreatRecord, RiskScore
+from db.models import Base, Asset, ThreatRecord, RiskScore
 from datetime import datetime
 import json
 
