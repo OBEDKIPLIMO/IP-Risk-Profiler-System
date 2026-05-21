@@ -1,98 +1,170 @@
 """
 engine/alert_engine.py
 ----------------------
-Alert Prioritisation Logic for the Automated IP Risk Profiler System.
+Alert Prioritisation Engine for the Automated IP Risk Profiler System.
+
+Responsibilities:
+  1. Take scanner assets + aggregated threat scores
+  2. Call the Risk Engine to compute composite risk per asset
+  3. Build structured Alert objects
+  4. Sort alerts by risk_score descending (highest risk first)
+  5. Return the prioritised alert list ready for DB persistence
 """
 
 import uuid
 from datetime import datetime, timezone
-# Import your validated risk math from Day 15
 from engine.risk_engine import compute_risk
 
-# ── Function 2 & 3: Generate Alerts ──────────────────────────────────────
+
 def generate_alerts(assets_list, threat_scores_dict):
     """
-    Takes discovered network assets and calculated external threat scores,
-    correlates them, and builds structured Alert records.
+    Generates a prioritised list of alerts from scan + threat intel data.
+
+    Steps:
+      1. Loop through every discovered asset
+      2. Look up its composite threat score from threat_scores_dict
+      3. Call compute_risk(criticality, severity) to get risk score + label
+      4. Build a full Alert dict for each asset
+      5. Sort all alerts by risk_score descending
+
+    Args:
+        assets_list (list of dict): discovered assets from scanner.
+            Each dict needs at minimum:
+              { "ip_address": str, "criticality_score": int }
+            Optionally also: hostname, open_ports, os_type, asset_id
+
+        threat_scores_dict (dict): maps ip_address → composite threat score (float)
+            From aggregator.get_composite_threat_score()
+            Example: { "192.168.1.10": 8.5, "192.168.1.25": 3.2 }
+
+    Returns:
+        list of dict: sorted alert objects, highest risk first.
+            Each alert dict:
+            {
+              "alert_id"         : str (UUID),
+              "asset_ip"         : str,
+              "asset_id"         : int or None,
+              "hostname"         : str or None,
+              "open_ports"       : str or None,
+              "asset_criticality": float,
+              "threat_severity"  : float,
+              "risk_score"       : float,
+              "severity_label"   : str,
+              "timestamp"        : str (ISO),
+            }
     """
-    raw_alerts = []
-    
+    if not assets_list:
+        print("[ALERT ENGINE] No assets provided — nothing to generate.")
+        return []
+
+    alerts = []
+
     for asset in assets_list:
-        ip = asset.get("ip_address")
-        asset_criticality = asset.get("criticality_score", 1.0)
-        
-        # Look up external threat score, defaulting to a clean 1.0 if not found
+        ip                = asset.get("ip_address")
+        asset_criticality = asset.get("criticality_score", 1)
+
+        # Look up threat score — default 1.0 if IP was never queried
         threat_severity = threat_scores_dict.get(ip, 1.0)
-        
-        # Calculate risk matrix using our core engine math
-        risk_calculation = compute_risk(asset_criticality, threat_severity)
-        
-        # ── Task 4: Create Alert Object Structure ──
-        alert_object = {
-            "alert_id":          f"ALERT-{str(uuid.uuid4())[:8].upper()}", # Short unique ID
-            "asset_ip":          ip,
-            "asset_criticality": risk_calculation["asset_criticality"],
-            "threat_severity":   risk_calculation["threat_severity"],
-            "risk_score":        risk_calculation["composite_score"],
-            "severity_label":    risk_calculation["severity_label"],
-            "timestamp":         risk_calculation["computed_at"]
+
+        # Compute risk using the Risk Engine formula
+        risk = compute_risk(asset_criticality, threat_severity)
+
+        alert = {
+            "alert_id"         : str(uuid.uuid4()),   # unique ID for this alert
+            "asset_ip"         : ip,
+            "asset_id"         : asset.get("id"),      # DB primary key if available
+            "hostname"         : asset.get("hostname"),
+            "open_ports"       : asset.get("open_ports"),
+            "asset_criticality": risk["asset_criticality"],
+            "threat_severity"  : risk["threat_severity"],
+            "risk_score"       : risk["composite_score"],
+            "severity_label"   : risk["severity_label"],
+            "timestamp"        : datetime.now(timezone.utc).isoformat(),
         }
-        raw_alerts.append(alert_object)
-        
-    # ── Task 5: Sort Alerts prior to output ──
-    return sort_alerts(raw_alerts)
+        alerts.append(alert)
+
+    # Sort highest risk first
+    return sort_alerts(alerts)
 
 
-# ── Function 5: Sort Alerts descending ───────────────────────────────────
 def sort_alerts(alerts):
     """
-    Sorts alerts by risk_score descending (highest risk first / critical priority).
-    """
-    return sorted(alerts, key=lambda x: x["risk_score"], reverse=True)
+    Sorts a list of alert dicts by risk_score descending.
+    Highest risk score appears first — operators see the most
+    critical alerts at the top of the dashboard.
 
-# ── Task 6: Testing Execution Matrix ──────────────────────────────────────
+    Args:
+        alerts (list of dict): alert dicts with a 'risk_score' key
+
+    Returns:
+        list of dict: same list, sorted descending by risk_score
+    """
+    return sorted(alerts, key=lambda a: a["risk_score"], reverse=True)
+
+
+def print_alerts(alerts):
+    """Prints a formatted alert table to the terminal."""
+    if not alerts:
+        print("[ALERT ENGINE] No alerts to display.")
+        return
+
+    print("\n" + "="*72)
+    print(f"  PRIORITISED ALERTS — {len(alerts)} alert(s)  [sorted highest risk first]")
+    print("="*72)
+    print(f"  {'#':<4} {'IP':<18} {'Host':<18} {'Crit':>5} {'Threat':>7} {'Score':>7} {'Label':>8}")
+    print("  " + "-"*68)
+
+    for i, a in enumerate(alerts, 1):
+        marker = {"High": "⚠", "Medium": "~", "Low": "✓"}.get(a["severity_label"], "")
+        host   = (a.get("hostname") or "Unknown")[:16]
+        print(f"  {i:<4} {a['asset_ip']:<18} {host:<18} "
+              f"{a['asset_criticality']:>5.1f} {a['threat_severity']:>7.1f} "
+              f"{a['risk_score']:>7.1f} {a['severity_label']:>6} {marker}")
+
+    print("="*72 + "\n")
+
+
+# ── Run directly to test ──────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n" + "="*70)
-    print("  Alert Prioritisation Engine — 10 Host Mock Test")
-    print("="*70)
-    
-    # 10 Mock Assets with realistic criticality scores based on open ports
+
+    # 10 mock assets with varied criticality scores
     mock_assets = [
-        {"ip_address": "10.0.0.1",   "criticality_score": 10.0}, # Primary Active Directory
-        {"ip_address": "10.0.0.2",   "criticality_score": 9.0},  # Linux DB Production Server
-        {"ip_address": "10.0.0.3",   "criticality_score": 4.0},  # HR Workstation
-        {"ip_address": "10.0.0.4",   "criticality_score": 2.0},  # Library Network Printer
-        {"ip_address": "10.0.0.5",   "criticality_score": 8.0},  # Edge Firewall Router
-        {"ip_address": "10.0.0.6",   "criticality_score": 5.0},  # Staff Wi-Fi Gateway
-        {"ip_address": "10.0.0.7",   "criticality_score": 9.0},  # Web Payment Portal
-        {"ip_address": "10.0.0.8",   "criticality_score": 3.0},  # Guest IoT Thermostat
-        {"ip_address": "10.0.0.9",   "criticality_score": 6.0},  # Backup Storage NAS
-        {"ip_address": "10.0.0.10",  "criticality_score": 1.0},  # Dummy Unused Test Machine
+        {"ip_address": "192.168.1.10", "criticality_score": 9,  "hostname": "DB-SERVER-01"},
+        {"ip_address": "192.168.1.11", "criticality_score": 8,  "hostname": "WEB-SERVER-01"},
+        {"ip_address": "192.168.1.12", "criticality_score": 7,  "hostname": "FILE-SERVER-01"},
+        {"ip_address": "192.168.1.13", "criticality_score": 6,  "hostname": "STAFF-PC-01"},
+        {"ip_address": "192.168.1.14", "criticality_score": 5,  "hostname": "STAFF-PC-02"},
+        {"ip_address": "192.168.1.15", "criticality_score": 4,  "hostname": "STAFF-PC-03"},
+        {"ip_address": "192.168.1.16", "criticality_score": 3,  "hostname": "PRINTER-01"},
+        {"ip_address": "192.168.1.17", "criticality_score": 2,  "hostname": "CCTV-CAM-01"},
+        {"ip_address": "192.168.1.18", "criticality_score": 1,  "hostname": "IOT-SENSOR-01"},
+        {"ip_address": "192.168.1.19", "criticality_score": 10, "hostname": "DOMAIN-CTRL"},
     ]
-    
-    # 10 Corresponding Mock Threat Intelligence severity levels from API aggregator
-    mock_threats = {
-        "10.0.0.1":  1.0,  # Clean API reports
-        "10.0.0.2":  8.5,  # HIGH threat: listed as an active malware sender
-        "10.0.0.3":  4.0,  # Medium threat: historical scans flagged
-        "10.0.0.4":  1.0,  # Completely clean
-        "10.0.0.5":  9.8,  # CRITICAL threat: globally targeted brute-forcer
-        "10.0.0.6":  2.5,  # Low historical reports
-        "10.0.0.7":  7.0,  # High threat: communication with TOR entry nodes
-        "10.0.0.8":  9.0,  # High threat: IP scanning internet infrastructure
-        "10.0.0.9":  2.0,  # Relatively stable
-        "10.0.0.10": 1.0,  # Completely clean
+
+    # 10 mock threat scores (simulating aggregator output)
+    mock_threat_scores = {
+        "192.168.1.10": 9.0,   # very high threat
+        "192.168.1.11": 7.5,   # high threat
+        "192.168.1.12": 6.0,   # medium-high threat
+        "192.168.1.13": 5.0,   # medium threat
+        "192.168.1.14": 3.5,   # low-medium threat
+        "192.168.1.15": 2.0,   # low threat
+        "192.168.1.16": 1.5,   # very low threat
+        "192.168.1.17": 1.2,   # minimal threat
+        "192.168.1.18": 1.0,   # clean
+        "192.168.1.19": 8.5,   # critical asset + high threat = top alert
     }
 
-    # Run prioritisation routine
-    prioritised_alerts = generate_alerts(mock_assets, mock_threats)
-    
-    # Print clean terminal dashboard layout
-    print(f"  {'ALERT ID':<15} {'TARGET IP':<14} {'CRIT':<6} {'THREAT':<8} {'RISK SCORE':<12} {'PRIORITY':<8}")
-    print("  " + "-"*65)
-    
-    for alert in prioritised_alerts:
-        marker = "🚨 HIGH" if alert["severity_label"] == "High" else ("⚠️ MED" if alert["severity_label"] == "Medium" else "✅ LOW")
-        print(f"  {alert['alert_id']:<15} {alert['asset_ip']:<14} {alert['asset_criticality']:<6.1f} {alert['threat_severity']:<8.1f} {alert['risk_score']:<12.2f} {marker:<8}")
-        
-    print("="*70 + "\n")
+    print("\n" + "="*55)
+    print("  Alert Engine — Test with 10 Mock Assets")
+    print("="*55)
+
+    alerts = generate_alerts(mock_assets, mock_threat_scores)
+    print_alerts(alerts)
+
+    print(f"  Top alert   : {alerts[0]['asset_ip']} — score {alerts[0]['risk_score']} [{alerts[0]['severity_label']}]")
+    print(f"  Bottom alert: {alerts[-1]['asset_ip']} — score {alerts[-1]['risk_score']} [{alerts[-1]['severity_label']}]")
+    print(f"\n  Confirm sort: each score ≤ previous score")
+    scores = [a["risk_score"] for a in alerts]
+    is_sorted = all(scores[i] >= scores[i+1] for i in range(len(scores)-1))
+    print(f"  Sorted correctly: {is_sorted}")

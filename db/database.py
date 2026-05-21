@@ -1,208 +1,254 @@
 """
 db/database.py
 --------------
-Handles all database setup for the IP Risk Profiler:
-  - SQLAlchemy engine creation
-  - Session factory
-  - create_all()  → creates tables if they don't exist
-  - seed_db()     → inserts 3 sample rows per table for testing
+Database setup, session management, and persistence functions.
+
+Functions:
+  init_db()              : creates all tables if they don't exist
+  get_session()          : returns a new SQLAlchemy session
+  save_alerts_to_db()    : upserts a list of RiskAlert dicts to the DB
+  get_all_alerts()       : returns all alerts sorted by risk_score desc
+  get_alerts_by_severity(): filters alerts by Low / Medium / High
+  acknowledge_alert()    : marks one alert as acknowledged
 """
 
+import json
+from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from db.models import Base, Asset, ThreatRecord, RiskScore
-from datetime import datetime
-import json
+from db.models import Base, Asset, ThreatRecord, RiskAlert
 
-# ── 1. Engine ─────────────────────────────────────────────────────────────
-# The engine is the connection to your SQLite file (dev.db).
-# "sqlite:///dev.db" means: create dev.db in the current working directory.
-engine = create_engine(
-    "sqlite:///dev.db",
-    echo=True,          # echo=True prints every SQL statement — useful for learning/debugging
-    connect_args={"check_same_thread": False}  # needed for SQLite + Flask threading
+# ── Engine + Session ──────────────────────────────────────────────────────
+DATABASE_URL = "sqlite:///dev.db"
+engine       = create_engine(
+    DATABASE_URL,
+    echo=False,   # set True to see raw SQL in terminal during debugging
+    connect_args={"check_same_thread": False}
 )
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# ── 2. Session Factory ────────────────────────────────────────────────────
-# A session is like a "conversation" with the database.
-# You use it to add, query, update, and delete records.
-SessionLocal = sessionmaker(
-    autocommit=False,   # we manually commit changes (safer)
-    autoflush=False,
-    bind=engine
-)
 
 def get_session():
-    """
-    Returns a new database session.
-    Always close the session when done to release the connection.
-
-    Usage:
-        session = get_session()
-        try:
-            session.add(some_record)
-            session.commit()
-        finally:
-            session.close()
-    """
+    """Returns a new DB session. Always close it when done."""
     return SessionLocal()
 
 
-# ── 3. create_all() ───────────────────────────────────────────────────────
 def init_db():
-    """
-    Creates all database tables defined in models.py if they don't exist yet.
-    Safe to call multiple times — will NOT overwrite existing data.
-
-    Call this once at application startup.
-    """
-    # already imported  # import here to avoid circular imports
-
-    print("\n[DB] Initialising database...")
+    """Creates all tables defined in models.py if they don't exist yet."""
+    print("[DB] Initialising database...")
     Base.metadata.create_all(bind=engine)
-    print("[DB] Tables created (or already exist): assets, threat_records, risk_scores")
-    print("[DB] Database file: dev.db\n")
+    print("[DB] Tables ready: assets, threat_records, risk_scores, risk_alerts")
 
 
-# ── 4. Seed Data ──────────────────────────────────────────────────────────
-def seed_db():
+# ── Save Alerts (Upsert) ──────────────────────────────────────────────────
+def save_alerts_to_db(alerts_list):
     """
-    Inserts 3 sample rows into each table so you can test
-    the dashboard and API routes without running a real scan.
+    Saves a list of alert dicts to the risk_alerts table.
 
-    Safe to call once — checks if data already exists before inserting.
+    UPSERT logic:
+      - If an alert for this asset_ip already exists → UPDATE it
+      - If it's a new IP → INSERT a fresh row
+
+    This means running the scanner twice will UPDATE existing alerts
+    rather than creating duplicates.
+
+    Args:
+        alerts_list (list of dict): output of alert_engine.generate_alerts()
+            Each dict must have:
+              asset_ip, asset_criticality, threat_severity,
+              risk_score, severity_label
+            Optional:
+              asset_id, threat_record_id
+
+    Returns:
+        dict: { "inserted": int, "updated": int, "errors": int }
     """
-    session = get_session()
+    if not alerts_list:
+        print("[DB] No alerts to save.")
+        return {"inserted": 0, "updated": 0, "errors": 0}
+
+    session  = get_session()
+    inserted = 0
+    updated  = 0
+    errors   = 0
 
     try:
-        # ── Check if already seeded ──
-        if session.query(Asset).count() > 0:
-            print("[SEED] Database already has data — skipping seed.")
-            return
+        for alert_data in alerts_list:
+            try:
+                ip = alert_data.get("asset_ip") or alert_data.get("ip_address")
+                if not ip:
+                    print(f"[DB ERROR] Alert missing asset_ip — skipping: {alert_data}")
+                    errors += 1
+                    continue
 
-        print("[SEED] Inserting sample data...")
+                existing = session.query(RiskAlert).filter_by(asset_ip=ip).first()
 
-        # ── 3 Sample Assets ───────────────────────────────────────────────
-        # These represent devices your scanner might find on the Kabarak LAN
-        assets = [
-            Asset(
-                ip_address="192.168.1.10",
-                hostname="ADMIN-SERVER-01",
-                mac_address="AA:BB:CC:11:22:33",
-                open_ports="22,80,443,3306",  # SSH, HTTP, HTTPS, MySQL
-                os_type="Ubuntu 22.04 LTS",
-                criticality_score=9,           # HIGH — database server
-                last_seen=datetime.utcnow()
-            ),
-            Asset(
-                ip_address="192.168.1.25",
-                hostname="STAFF-PC-OBED",
-                mac_address="AA:BB:CC:44:55:66",
-                open_ports="80,445",           # HTTP, Windows file sharing
-                os_type="Windows 10 Pro",
-                criticality_score=5,           # MEDIUM — staff workstation
-                last_seen=datetime.utcnow()
-            ),
-            Asset(
-                ip_address="192.168.1.50",
-                hostname="PRINTER-LIB",
-                mac_address="AA:BB:CC:77:88:99",
-                open_ports="9100",             # printer port only
-                os_type="Unknown",
-                criticality_score=2,           # LOW — just a printer
-                last_seen=datetime.utcnow()
-            ),
-        ]
-        session.add_all(assets)
-        session.flush()  # flush assigns IDs without committing yet
-        print(f"[SEED] Added {len(assets)} assets.")
+                if existing:
+                    # UPDATE — refresh all fields with latest scan data
+                    existing.asset_criticality = alert_data.get("asset_criticality", existing.asset_criticality)
+                    existing.threat_severity   = alert_data.get("threat_severity",   existing.threat_severity)
+                    existing.risk_score        = alert_data.get("risk_score",        existing.risk_score)
+                    existing.severity_label    = alert_data.get("severity_label",    existing.severity_label)
+                    existing.asset_id          = alert_data.get("asset_id",          existing.asset_id)
+                    existing.threat_record_id  = alert_data.get("threat_record_id",  existing.threat_record_id)
+                    existing.updated_at        = datetime.now(timezone.utc)
+                    # NOTE: acknowledged is NOT reset on update —
+                    # once an operator acks an alert it stays acked
+                    print(f"[DB] UPDATED  alert: {ip} | score={alert_data.get('risk_score')} [{alert_data.get('severity_label')}]")
+                    updated += 1
 
-        # ── 3 Sample Threat Records ───────────────────────────────────────
-        # Simulating what AbuseIPDB, VirusTotal, and OTX would return
-        threat_records = [
-            ThreatRecord(
-                ip_address="192.168.1.10",
-                source_api="abuseipdb",
-                severity_score=8.5,            # HIGH — heavily reported IP
-                details_json=json.dumps({
-                    "abuseConfidenceScore": 85,
-                    "totalReports": 142,
-                    "countryCode": "RU",
-                    "usageType": "Data Center/Web Hosting/Transit"
-                }),
-                queried_at=datetime.utcnow()
-            ),
-            ThreatRecord(
-                ip_address="192.168.1.25",
-                source_api="virustotal",
-                severity_score=4.0,            # MEDIUM — some detections
-                details_json=json.dumps({
-                    "malicious": 4,
-                    "suspicious": 2,
-                    "harmless": 60,
-                    "reputation": -5
-                }),
-                queried_at=datetime.utcnow()
-            ),
-            ThreatRecord(
-                ip_address="192.168.1.50",
-                source_api="otx",
-                severity_score=1.5,            # LOW — clean IP
-                details_json=json.dumps({
-                    "pulse_count": 1,
-                    "tags": [],
-                    "country": "KE"
-                }),
-                queried_at=datetime.utcnow()
-            ),
-        ]
-        session.add_all(threat_records)
-        session.flush()
-        print(f"[SEED] Added {len(threat_records)} threat records.")
+                else:
+                    # INSERT — new alert
+                    new_alert = RiskAlert(
+                        asset_ip          = ip,
+                        asset_id          = alert_data.get("asset_id"),
+                        threat_record_id  = alert_data.get("threat_record_id"),
+                        asset_criticality = alert_data.get("asset_criticality", 1.0),
+                        threat_severity   = alert_data.get("threat_severity",   1.0),
+                        risk_score        = alert_data.get("risk_score",        1.0),
+                        severity_label    = alert_data.get("severity_label",    "Low"),
+                        acknowledged      = False,
+                        created_at        = datetime.now(timezone.utc),
+                        updated_at        = datetime.now(timezone.utc),
+                    )
+                    session.add(new_alert)
+                    print(f"[DB] INSERTED alert: {ip} | score={alert_data.get('risk_score')} [{alert_data.get('severity_label')}]")
+                    inserted += 1
 
-        # ── 3 Sample Risk Scores ──────────────────────────────────────────
-        # Formula: composite = criticality × severity
-        # Asset 1: 9 × 8.5 = 76.5 → HIGH
-        # Asset 2: 5 × 4.0 = 20.0 → LOW
-        # Asset 3: 2 × 1.5 = 3.0  → LOW
-        risk_scores = [
-            RiskScore(
-                asset_id=assets[0].id,
-                threat_record_id=threat_records[0].id,
-                composite_score=round(9 * 8.5, 2),   # 76.5
-                severity_label="High",
-                created_at=datetime.utcnow()
-            ),
-            RiskScore(
-                asset_id=assets[1].id,
-                threat_record_id=threat_records[1].id,
-                composite_score=round(5 * 4.0, 2),   # 20.0
-                severity_label="Low",
-                created_at=datetime.utcnow()
-            ),
-            RiskScore(
-                asset_id=assets[2].id,
-                threat_record_id=threat_records[2].id,
-                composite_score=round(2 * 1.5, 2),   # 3.0
-                severity_label="Low",
-                created_at=datetime.utcnow()
-            ),
-        ]
-        session.add_all(risk_scores)
+            except Exception as row_err:
+                print(f"[DB ERROR] Failed to save alert for {alert_data.get('asset_ip', '?')}: {row_err}")
+                errors += 1
+                continue
+
         session.commit()
-        print(f"[SEED] Added {len(risk_scores)} risk scores.")
-        print("[SEED] ✓ Seed complete. Your dev.db is ready for testing.\n")
+        print(f"\n[DB] Alerts saved — inserted: {inserted}, updated: {updated}, errors: {errors}")
 
     except Exception as e:
         session.rollback()
-        print(f"[SEED ERROR] {e}")
+        print(f"[DB ERROR] Transaction failed, rolled back: {e}")
         raise
     finally:
         session.close()
 
+    return {"inserted": inserted, "updated": updated, "errors": errors}
 
-# ── Run directly to initialise + seed ─────────────────────────────────────
-# Run this file directly:  python db/database.py
-if __name__ == "__main__":
-    init_db()
-    seed_db()
+
+# ── Query Helpers (used by Flask API routes) ──────────────────────────────
+def get_all_alerts(limit=200):
+    """
+    Returns all alerts sorted by risk_score descending (highest risk first).
+
+    Args:
+        limit (int): max rows to return (default 200)
+
+    Returns:
+        list of dict
+    """
+    session = get_session()
+    try:
+        alerts = (session.query(RiskAlert)
+                  .order_by(RiskAlert.risk_score.desc())
+                  .limit(limit)
+                  .all())
+        return [a.to_dict() for a in alerts]
+    finally:
+        session.close()
+
+
+def get_alerts_by_severity(severity_label):
+    """
+    Returns alerts filtered by severity label.
+
+    Args:
+        severity_label (str): 'Low', 'Medium', or 'High'
+
+    Returns:
+        list of dict
+    """
+    session = get_session()
+    try:
+        alerts = (session.query(RiskAlert)
+                  .filter_by(severity_label=severity_label)
+                  .order_by(RiskAlert.risk_score.desc())
+                  .all())
+        return [a.to_dict() for a in alerts]
+    finally:
+        session.close()
+
+
+def get_all_assets():
+    """Returns all assets as list of dicts."""
+    session = get_session()
+    try:
+        assets = session.query(Asset).order_by(Asset.criticality_score.desc()).all()
+        return [a.to_dict() for a in assets]
+    finally:
+        session.close()
+
+
+def get_all_threat_records():
+    """Returns all threat records as list of dicts."""
+    session = get_session()
+    try:
+        records = session.query(ThreatRecord).order_by(ThreatRecord.queried_at.desc()).all()
+        return [r.to_dict() for r in records]
+    finally:
+        session.close()
+
+
+def get_stats():
+    """
+    Returns summary statistics for the dashboard stat cards.
+
+    Returns:
+        dict: { total_assets, total_alerts, high_alerts,
+                medium_alerts, low_alerts, avg_risk_score }
+    """
+    session = get_session()
+    try:
+        total_assets  = session.query(Asset).count()
+        total_alerts  = session.query(RiskAlert).count()
+        high_alerts   = session.query(RiskAlert).filter_by(severity_label="High").count()
+        medium_alerts = session.query(RiskAlert).filter_by(severity_label="Medium").count()
+        low_alerts    = session.query(RiskAlert).filter_by(severity_label="Low").count()
+
+        all_scores    = [a.risk_score for a in session.query(RiskAlert).all()]
+        avg_score     = round(sum(all_scores) / len(all_scores), 2) if all_scores else 0.0
+
+        return {
+            "total_assets":  total_assets,
+            "total_alerts":  total_alerts,
+            "high_alerts":   high_alerts,
+            "medium_alerts": medium_alerts,
+            "low_alerts":    low_alerts,
+            "avg_risk_score": avg_score,
+        }
+    finally:
+        session.close()
+
+
+def acknowledge_alert(alert_id):
+    """
+    Marks one alert as acknowledged.
+
+    Args:
+        alert_id (int): the alert's primary key
+
+    Returns:
+        bool: True if found and updated, False if not found
+    """
+    session = get_session()
+    try:
+        alert = session.query(RiskAlert).filter_by(alert_id=alert_id).first()
+        if not alert:
+            return False
+        alert.acknowledged = True
+        alert.updated_at   = datetime.now(timezone.utc)
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"[DB ERROR] acknowledge_alert failed: {e}")
+        return False
+    finally:
+        session.close()
