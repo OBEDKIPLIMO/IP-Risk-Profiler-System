@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Assets — IP Risk Profiler{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h4><i class="bi bi-hdd-network me-2 text-primary"></i>Asset Inventory</h4>
+  <span class="last-updated" id="last-updated">Loading...</span>
+</div>
+
+<!-- Mini stat row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card card-assets">
+      <div class="stat-icon icon-assets"><i class="bi bi-hdd-network-fill"></i></div>
+      <div>
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-label">Total Assets</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card card-high">
+      <div class="stat-icon icon-high"><i class="bi bi-shield-x"></i></div>
+      <div>
+        <div class="stat-value" id="stat-critical">—</div>
+        <div class="stat-label">Critical (7–10)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Asset table -->
+<div class="section-card card">
+  <div class="card-header">
+    <h6><i class="bi bi-table me-2"></i>Discovered Devices</h6>
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <i class="bi bi-search"></i>
+        <input type="text" id="search-box"
+               placeholder="Search IP or hostname..."
+               oninput="filterAssets()"/>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" onclick="loadAssets()" title="Refresh">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="card-body p-0" style="position:relative;">
+    <div id="spinner-overlay" class="spinner-overlay">
+      <div class="spinner-border text-primary" role="status"></div>
+    </div>
+    <div class="table-responsive">
+      <table class="table data-table mb-0">
+        <thead>
+          <tr>
+            <th>IP Address</th>
+            <th>Hostname</th>
+            <th>OS</th>
+            <th>Open Ports</th>
+            <th>Criticality</th>
+            <th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody id="assets-tbody">
+          <tr><td colspan="6" class="text-center text-muted py-4">Loading assets...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let allAssets = [];
+
+async function loadAssets() {
+  document.getElementById('spinner-overlay').style.display = 'flex';
+  try {
+    const res  = await fetch('/api/assets');
+    const data = await res.json();
+    allAssets  = data.data || [];
+    filterAssets();
+    document.getElementById('stat-total').textContent    = allAssets.length;
+    document.getElementById('stat-critical').textContent =
+      allAssets.filter(a => a.criticality_score >= 7).length;
+    document.getElementById('last-updated').textContent  =
+      'Last updated: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('assets-tbody').innerHTML =
+      `<tr><td colspan="6" class="text-danger text-center py-3">Error: ${e.message}</td></tr>`;
+  } finally {
+    document.getElementById('spinner-overlay').style.display = 'none';
+  }
+}
+
+function filterAssets() {
+  const q = document.getElementById('search-box').value.toLowerCase();
+  const list = q
+    ? allAssets.filter(a =>
+        (a.ip_address||'').toLowerCase().includes(q) ||
+        (a.hostname||'').toLowerCase().includes(q))
+    : allAssets;
+  renderAssets(list);
+}
+
+function renderAssets(assets) {
+  const tbody = document.getElementById('assets-tbody');
+  if (!assets.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No assets found.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = assets.map(a => {
+    const sc = a.criticality_score;
+    const bc = sc >= 7 ? 'badge-high' : sc >= 4 ? 'badge-medium' : 'badge-low';
+    const ls = a.last_seen ? new Date(a.last_seen).toLocaleString() : '—';
+    const ports = a.open_ports
+      ? a.open_ports.split(',').map(p =>
+          `<span class="badge bg-light text-dark border me-1"
+                 style="font-size:.7rem;">${p.trim()}</span>`
+        ).join('')
+      : '<span class="text-muted">—</span>';
+
+    return `
+      <tr>
+        <td class="ip-mono">${a.ip_address}</td>
+        <td>${a.hostname || '<span class="text-muted">Unknown</span>'}</td>
+        <td style="font-size:.8rem;">${a.os_type || '<span class="text-muted">—</span>'}</td>
+        <td>${ports}</td>
+        <td><span class="sev-badge ${bc}">${sc}/10</span></td>
+        <td style="font-size:.77rem;color:#94a3b8;">${ls}</td>
+      </tr>`;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', loadAssets);
+</script>
+{% endblock %}

@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — IP Risk Profiler{% endblock %}
+
+{% block content %}
+
+<!-- ── Page header ────────────────────────────────────────────────── -->
+<div class="page-header">
+  <h4><i class="bi bi-speedometer2 me-2 text-primary"></i>Security Dashboard</h4>
+  <span class="last-updated" id="last-updated">Loading...</span>
+</div>
+
+<!-- ── Stat cards ─────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-assets">
+      <div class="stat-icon icon-assets"><i class="bi bi-hdd-network-fill"></i></div>
+      <div>
+        <div class="stat-value" id="stat-assets">—</div>
+        <div class="stat-label">Total Assets</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-high">
+      <div class="stat-icon icon-high"><i class="bi bi-exclamation-triangle-fill"></i></div>
+      <div>
+        <div class="stat-value" id="stat-high">—</div>
+        <div class="stat-label">High Alerts</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-medium">
+      <div class="stat-icon icon-medium"><i class="bi bi-dash-circle-fill"></i></div>
+      <div>
+        <div class="stat-value" id="stat-medium">—</div>
+        <div class="stat-label">Medium Alerts</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-avg">
+      <div class="stat-icon icon-avg"><i class="bi bi-graph-up-arrow"></i></div>
+      <div>
+        <div class="stat-value" id="stat-avg">—</div>
+        <div class="stat-label">Avg Risk Score</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Alert table ────────────────────────────────────────────────── -->
+<div class="section-card card">
+  <div class="card-header">
+    <h6><i class="bi bi-bell-fill me-2 text-danger"></i>Risk Alerts</h6>
+    <div class="filter-bar">
+      <!-- Search box -->
+      <div class="search-wrap">
+        <i class="bi bi-search"></i>
+        <input type="text" id="search-box"
+               placeholder="Search IP..."
+               oninput="applyFilters()"/>
+      </div>
+      <!-- Severity filters -->
+      <button class="btn-filter f-all active" onclick="setFilter('All',this)">All</button>
+      <button class="btn-filter f-high"       onclick="setFilter('High',this)">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>High
+      </button>
+      <button class="btn-filter f-med"        onclick="setFilter('Medium',this)">Medium</button>
+      <button class="btn-filter f-low"        onclick="setFilter('Low',this)">Low</button>
+      <!-- Refresh -->
+      <button class="btn btn-sm btn-outline-secondary" onclick="loadAlerts()" title="Refresh">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="card-body p-0" style="position:relative;">
+    <!-- Spinner -->
+    <div id="spinner-overlay" class="spinner-overlay">
+      <div class="text-center">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2 text-muted" style="font-size:.8rem;">Fetching alerts...</div>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table data-table mb-0">
+        <thead>
+          <tr>
+            <th onclick="sortBy('asset_ip')"          data-col="asset_ip">
+              IP Address <i class="bi bi-chevron-expand"></i></th>
+            <th onclick="sortBy('asset_criticality')" data-col="asset_criticality">
+              Criticality <i class="bi bi-chevron-expand"></i></th>
+            <th onclick="sortBy('threat_severity')"   data-col="threat_severity">
+              Threat Score <i class="bi bi-chevron-expand"></i></th>
+            <th onclick="sortBy('risk_score')"        data-col="risk_score" class="sorted">
+              Risk Score <i class="bi bi-chevron-down"></i></th>
+            <th onclick="sortBy('severity_label')"    data-col="severity_label">
+              Severity <i class="bi bi-chevron-expand"></i></th>
+            <th onclick="sortBy('updated_at')"        data-col="updated_at">
+              Last Seen <i class="bi bi-chevron-expand"></i></th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="alerts-tbody">
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+              Loading alerts...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Empty state -->
+    <div id="empty-state" class="text-center py-5 d-none">
+      <i class="bi bi-shield-check" style="font-size:2.5rem;color:#94a3b8;"></i>
+      <p class="mt-2 text-muted mb-0">No alerts match this filter.</p>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+// ── State ──────────────────────────────────────────────────────────
+let allAlerts    = [];
+let sortCol      = "risk_score";
+let sortAsc      = false;       // false = descending (high risk first)
+let activeFilter = "All";
+
+// ── Fetch alerts ───────────────────────────────────────────────────
+async function loadAlerts() {
+  showSpinner(true);
+  try {
+    const res  = await fetch('/api/alerts');
+    const data = await res.json();
+    allAlerts  = data.data || [];
+    applyFilters();
+    document.getElementById('last-updated').textContent =
+      'Last updated: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('alerts-tbody').innerHTML =
+      `<tr><td colspan="7" class="text-center text-danger py-3">
+         Error loading alerts: ${e.message}
+       </td></tr>`;
+  } finally {
+    showSpinner(false);
+  }
+}
+
+// ── Fetch stats ────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const res  = await fetch('/api/stats');
+    const data = await res.json();
+    document.getElementById('stat-assets').textContent  = data.total_assets   ?? '—';
+    document.getElementById('stat-high').textContent    = data.high_alerts    ?? '—';
+    document.getElementById('stat-medium').textContent  = data.medium_alerts  ?? '—';
+    document.getElementById('stat-avg').textContent     = data.avg_risk_score ?? '—';
+  } catch(e) { console.error('Stats error:', e); }
+}
+
+// ── Filter + search + sort ─────────────────────────────────────────
+function applyFilters() {
+  const query = document.getElementById('search-box').value.toLowerCase().trim();
+  let list    = allAlerts;
+
+  // Severity filter
+  if (activeFilter !== 'All') {
+    list = list.filter(a => a.severity_label === activeFilter);
+  }
+
+  // IP search
+  if (query) {
+    list = list.filter(a => (a.asset_ip || '').toLowerCase().includes(query));
+  }
+
+  // Sort
+  list = [...list].sort((a, b) => {
+    let va = a[sortCol] ?? '', vb = b[sortCol] ?? '';
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return sortAsc ? -1 :  1;
+    if (va > vb) return sortAsc ?  1 : -1;
+    return 0;
+  });
+
+  renderTable(list);
+}
+
+// ── Render rows ────────────────────────────────────────────────────
+function renderTable(alerts) {
+  const tbody = document.getElementById('alerts-tbody');
+  const empty = document.getElementById('empty-state');
+
+  if (!alerts.length) {
+    tbody.innerHTML = '';
+    empty.classList.remove('d-none');
+    return;
+  }
+  empty.classList.add('d-none');
+
+  tbody.innerHTML = alerts.map(a => {
+    // Colour classes based on severity
+    const scoreClass = a.severity_label === 'High'   ? 'score-high'
+                     : a.severity_label === 'Medium' ? 'score-medium'
+                     :                                 'score-low';
+    const badgeClass = a.severity_label === 'High'   ? 'badge-high'
+                     : a.severity_label === 'Medium' ? 'badge-medium'
+                     :                                 'badge-low';
+    const icon       = a.severity_label === 'High'   ? '⚠'
+                     : a.severity_label === 'Medium' ? '~'
+                     :                                 '✓';
+
+    // Acknowledge button
+    const ackCell = a.acknowledged
+      ? `<span class="acked"><i class="bi bi-check-circle me-1"></i>Acknowledged</span>`
+      : `<button class="btn btn-sm btn-outline-secondary btn-ack"
+                 onclick="acknowledgeAlert(${a.alert_id}, this)">
+           <i class="bi bi-check2"></i> Ack
+         </button>`;
+
+    const lastSeen = a.updated_at
+      ? new Date(a.updated_at).toLocaleString()
+      : '—';
+
+    return `
+      <tr id="row-${a.alert_id}">
+        <td class="ip-mono">${a.asset_ip}</td>
+        <td>${a.asset_criticality != null ? a.asset_criticality.toFixed(1) : '—'}</td>
+        <td>${a.threat_severity   != null ? a.threat_severity.toFixed(1)   : '—'}</td>
+        <td class="${scoreClass}">
+          ${a.risk_score != null ? a.risk_score.toFixed(1) : '—'}
+        </td>
+        <td>
+          <span class="sev-badge ${badgeClass}">${icon} ${a.severity_label}</span>
+        </td>
+        <td style="font-size:.77rem;color:#94a3b8;">${lastSeen}</td>
+        <td>${ackCell}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ── Column sort ────────────────────────────────────────────────────
+function sortBy(col) {
+  sortAsc = (sortCol === col) ? !sortAsc : (col === 'asset_ip');
+  sortCol = col;
+
+  // Update header icons
+  document.querySelectorAll('.data-table th').forEach(th => {
+    th.classList.remove('sorted');
+    const ico = th.querySelector('i');
+    if (ico) ico.className = 'bi bi-chevron-expand';
+  });
+  const th = document.querySelector(`[data-col="${col}"]`);
+  if (th) {
+    th.classList.add('sorted');
+    const ico = th.querySelector('i');
+    if (ico) ico.className = `bi bi-chevron-${sortAsc ? 'up' : 'down'}`;
+  }
+  applyFilters();
+}
+
+// ── Severity filter buttons ────────────────────────────────────────
+function setFilter(label, btn) {
+  activeFilter = label;
+  document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+// ── Acknowledge ────────────────────────────────────────────────────
+async function acknowledgeAlert(id, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  try {
+    const res = await fetch(`/api/alerts/${id}/acknowledge`, {method:'POST'});
+    if (res.ok) {
+      btn.parentElement.innerHTML =
+        '<span class="acked"><i class="bi bi-check-circle me-1"></i>Acknowledged</span>';
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check2"></i> Ack';
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check2"></i> Ack';
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+function showSpinner(show) {
+  document.getElementById('spinner-overlay').style.display = show ? 'flex' : 'none';
+}
+
+// ── Auto-refresh every 60 seconds ─────────────────────────────────
+setInterval(() => { loadAlerts(); loadStats(); }, 60000);
+
+// ── Init ───────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadAlerts();
+  loadStats();
+});
+</script>
+{% endblock %}
