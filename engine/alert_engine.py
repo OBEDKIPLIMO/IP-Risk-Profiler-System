@@ -2,13 +2,6 @@
 engine/alert_engine.py
 ----------------------
 Alert Prioritisation Engine for the Automated IP Risk Profiler System.
-
-Responsibilities:
-  1. Take scanner assets + aggregated threat scores
-  2. Call the Risk Engine to compute composite risk per asset
-  3. Build structured Alert objects
-  4. Sort alerts by risk_score descending (highest risk first)
-  5. Return the prioritised alert list ready for DB persistence
 """
 
 import uuid
@@ -19,39 +12,6 @@ from engine.risk_engine import compute_risk
 def generate_alerts(assets_list, threat_scores_dict):
     """
     Generates a prioritised list of alerts from scan + threat intel data.
-
-    Steps:
-      1. Loop through every discovered asset
-      2. Look up its composite threat score from threat_scores_dict
-      3. Call compute_risk(criticality, severity) to get risk score + label
-      4. Build a full Alert dict for each asset
-      5. Sort all alerts by risk_score descending
-
-    Args:
-        assets_list (list of dict): discovered assets from scanner.
-            Each dict needs at minimum:
-              { "ip_address": str, "criticality_score": int }
-            Optionally also: hostname, open_ports, os_type, asset_id
-
-        threat_scores_dict (dict): maps ip_address → composite threat score (float)
-            From aggregator.get_composite_threat_score()
-            Example: { "192.168.1.10": 8.5, "192.168.1.25": 3.2 }
-
-    Returns:
-        list of dict: sorted alert objects, highest risk first.
-            Each alert dict:
-            {
-              "alert_id"         : str (UUID),
-              "asset_ip"         : str,
-              "asset_id"         : int or None,
-              "hostname"         : str or None,
-              "open_ports"       : str or None,
-              "asset_criticality": float,
-              "threat_severity"  : float,
-              "risk_score"       : float,
-              "severity_label"   : str,
-              "timestamp"        : str (ISO),
-            }
     """
     if not assets_list:
         print("[ALERT ENGINE] No assets provided — nothing to generate.")
@@ -62,48 +22,109 @@ def generate_alerts(assets_list, threat_scores_dict):
     for asset in assets_list:
         ip                = asset.get("ip_address")
         asset_criticality = asset.get("criticality_score", 1)
-
-        # Look up threat score — default 1.0 if IP was never queried
-        threat_severity = threat_scores_dict.get(ip, 1.0)
-
-        # Compute risk using the Risk Engine formula
-        risk = compute_risk(asset_criticality, threat_severity)
+        threat_severity   = threat_scores_dict.get(ip, 1.0)
+        risk              = compute_risk(asset_criticality, threat_severity)
 
         alert = {
-            "alert_id"         : str(uuid.uuid4()),   # unique ID for this alert
+            "alert_id"         : str(uuid.uuid4()),
             "asset_ip"         : ip,
-            "asset_id"         : asset.get("id"),      # DB primary key if available
+            "asset_id"         : asset.get("id"),       # may be None — handled safely below
             "hostname"         : asset.get("hostname"),
             "open_ports"       : asset.get("open_ports"),
-            "asset_criticality": risk["asset_criticality"],
-            "threat_severity"  : risk["threat_severity"],
-            "risk_score"       : risk["composite_score"],
+            "asset_criticality": float(risk["asset_criticality"]),   # ✅ ensure float
+            "threat_severity"  : float(risk["threat_severity"]),     # ✅ ensure float
+            "risk_score"       : float(risk["composite_score"]),     # ✅ ensure float
             "severity_label"   : risk["severity_label"],
             "timestamp"        : datetime.now(timezone.utc).isoformat(),
         }
         alerts.append(alert)
 
-    # Sort highest risk first
     return sort_alerts(alerts)
 
 
 def sort_alerts(alerts):
-    """
-    Sorts a list of alert dicts by risk_score descending.
-    Highest risk score appears first — operators see the most
-    critical alerts at the top of the dashboard.
-
-    Args:
-        alerts (list of dict): alert dicts with a 'risk_score' key
-
-    Returns:
-        list of dict: same list, sorted descending by risk_score
-    """
     return sorted(alerts, key=lambda a: a["risk_score"], reverse=True)
 
 
+def save_alerts_to_db(alerts_list):
+    """
+    Saves alerts to the risk_alerts table with upsert logic.
+    """
+    from db.database import engine as db_engine
+    from db.models import RiskAlert
+    from sqlalchemy.orm import sessionmaker
+
+    if not alerts_list:
+        print("[DB ALERT] No alerts to save.")
+        return {"inserted": 0, "updated": 0, "errors": 0}
+
+    SessionLocal = sessionmaker(bind=db_engine)
+    session      = SessionLocal()
+    inserted     = 0
+    updated      = 0
+    errors       = 0
+
+    try:
+        for a in alerts_list:
+            ip = a["asset_ip"]
+
+            try:
+                # ✅ FIX 1: Wrap the query in no_autoflush so SQLAlchemy does NOT
+                # flush pending inserts before this SELECT. Without this, the first
+                # INSERT is flushed mid-loop, hits a NULL constraint on asset_id/
+                # threat_record_id, and poisons the entire session transaction.
+                with session.no_autoflush:
+                    existing = session.query(RiskAlert).filter_by(asset_ip=ip).first()
+
+                if existing:
+                    existing.asset_criticality = a["asset_criticality"]
+                    existing.threat_severity   = a["threat_severity"]
+                    existing.risk_score        = a["risk_score"]
+                    existing.severity_label    = a["severity_label"]
+                    existing.updated_at        = datetime.now(timezone.utc)
+                    print(f"[DB ALERT] UPDATED  : {ip} | score={a['risk_score']} [{a['severity_label']}]")
+                    updated += 1
+
+                else:
+                    # ✅ FIX: Do NOT pass alert_id — the column is an auto-increment
+                    # Integer in the model, but generate_alerts() builds it as a UUID
+                    # string, causing sqlite3.IntegrityError: datatype mismatch.
+                    # Letting SQLite generate the integer PK automatically is correct.
+                    new_alert = RiskAlert(
+                        asset_ip          = a["asset_ip"],
+                        asset_criticality = a["asset_criticality"],
+                        threat_severity   = a["threat_severity"],
+                        risk_score        = a["risk_score"],
+                        severity_label    = a["severity_label"],
+                        acknowledged      = False,
+                    )
+                    session.add(new_alert)
+                    print(f"[DB ALERT] INSERTED : {ip} | score={a['risk_score']} [{a['severity_label']}]")
+                    inserted += 1
+
+            except Exception as row_error:
+                # ✅ FIX 3: Rollback to a clean savepoint after a row error so the
+                # session is usable again for subsequent rows instead of staying
+                # poisoned and failing every subsequent insert.
+                session.rollback()
+                print(f"[DB ALERT ERROR] Failed for IP {ip}: {row_error}")
+                errors += 1
+                continue
+
+        session.commit()
+        print(f"\n[DB] Alerts saved — inserted: {inserted}, updated: {updated}, errors: {errors}")
+
+    except Exception as e:
+        session.rollback()
+        print(f"[DB ALERT FATAL] Transaction failed, rolled back: {e}")
+
+    finally:
+        session.close()
+
+    return {"inserted": inserted, "updated": updated, "errors": errors}
+
+
 def print_alerts(alerts):
-    """Prints a formatted alert table to the terminal."""
     if not alerts:
         print("[ALERT ENGINE] No alerts to display.")
         return
@@ -127,7 +148,6 @@ def print_alerts(alerts):
 # ── Run directly to test ──────────────────────────────────────────────────
 if __name__ == "__main__":
 
-    # 10 mock assets with varied criticality scores
     mock_assets = [
         {"ip_address": "192.168.1.10", "criticality_score": 9,  "hostname": "DB-SERVER-01"},
         {"ip_address": "192.168.1.11", "criticality_score": 8,  "hostname": "WEB-SERVER-01"},
@@ -141,18 +161,17 @@ if __name__ == "__main__":
         {"ip_address": "192.168.1.19", "criticality_score": 10, "hostname": "DOMAIN-CTRL"},
     ]
 
-    # 10 mock threat scores (simulating aggregator output)
     mock_threat_scores = {
-        "192.168.1.10": 9.0,   # very high threat
-        "192.168.1.11": 7.5,   # high threat
-        "192.168.1.12": 6.0,   # medium-high threat
-        "192.168.1.13": 5.0,   # medium threat
-        "192.168.1.14": 3.5,   # low-medium threat
-        "192.168.1.15": 2.0,   # low threat
-        "192.168.1.16": 1.5,   # very low threat
-        "192.168.1.17": 1.2,   # minimal threat
-        "192.168.1.18": 1.0,   # clean
-        "192.168.1.19": 8.5,   # critical asset + high threat = top alert
+        "192.168.1.10": 9.0,
+        "192.168.1.11": 7.5,
+        "192.168.1.12": 6.0,
+        "192.168.1.13": 5.0,
+        "192.168.1.14": 3.5,
+        "192.168.1.15": 2.0,
+        "192.168.1.16": 1.5,
+        "192.168.1.17": 1.2,
+        "192.168.1.18": 1.0,
+        "192.168.1.19": 8.5,
     }
 
     print("\n" + "="*55)
@@ -164,7 +183,6 @@ if __name__ == "__main__":
 
     print(f"  Top alert   : {alerts[0]['asset_ip']} — score {alerts[0]['risk_score']} [{alerts[0]['severity_label']}]")
     print(f"  Bottom alert: {alerts[-1]['asset_ip']} — score {alerts[-1]['risk_score']} [{alerts[-1]['severity_label']}]")
-    print(f"\n  Confirm sort: each score ≤ previous score")
-    scores = [a["risk_score"] for a in alerts]
+    scores    = [a["risk_score"] for a in alerts]
     is_sorted = all(scores[i] >= scores[i+1] for i in range(len(scores)-1))
     print(f"  Sorted correctly: {is_sorted}")

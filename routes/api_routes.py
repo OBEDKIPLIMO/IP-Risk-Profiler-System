@@ -160,7 +160,7 @@ def trigger_scan():
         subnet = body.get("subnet", "192.168.100.0/24")
 
         # ── Import pipeline modules ───────────────────────────────────────
-        from scanner.scanner      import scan_subnet, save_assets_to_db
+        from scanner.asset_scanner      import scan_subnet, save_assets_to_db
         from threat_intel.aggregator    import get_composite_threat_score
         from engine.alert_engine        import generate_alerts
         from db.database                import save_alerts_to_db as save_alerts
