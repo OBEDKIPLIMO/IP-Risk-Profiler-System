@@ -12,27 +12,34 @@ Weighted average:
   AbuseIPDB  : 40%  — community abuse reports (most reliable for malicious IPs)
   VirusTotal : 40%  — antivirus engine detections (most reliable for malware)
   OTX        : 20%  — threat intelligence pulses (useful but lower signal)
-
-Why these weights?
-  AbuseIPDB and VirusTotal are more precise and directly measure
-  malicious activity. OTX pulses are valuable but can include
-  low-confidence reports, so it gets a lower weight.
 """
 
 import time
 from datetime import datetime, timezone
 import json
+import ipaddress  # 👈 ADDED HERE: For local network filtering
 
-#your threat modules
+# your threat modules
 from threat_intel.abuseipdb  import query_ip as query_abuseipdb,  normalise_abuseipdb
 from threat_intel.virustotal import query_ip as query_virustotal, normalise_virustotal
 from threat_intel.alienvault import query_ip as query_otx,        normalise_alienvault
 from db.database import get_session
 from db.models import ThreatRecord
+
 # ── Weights — must sum to 1.0 ─────────────────────────────────────────────
 WEIGHT_ABUSEIPDB  = 0.40
 WEIGHT_VIRUSTOTAL = 0.40
 WEIGHT_OTX        = 0.20
+
+
+# ── 1. ADDED HERE: Helper function to detect local vs public IPs ──────────
+def is_public_ip(ip_str):
+    """Returns True if the IP is a routable public IP; False if it is a private LAN IP."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return not ip.is_private
+    except ValueError:
+        return False
 
 
 # ── Main Function: Get Composite Threat Score ─────────────────────────────
@@ -40,35 +47,6 @@ def get_composite_threat_score(ip_address):
     """
     Queries all 3 threat intelligence APIs for one IP address and
     returns a single composite threat score plus individual scores.
-
-    Steps:
-      1. Query AbuseIPDB  → get severity score (or None on failure)
-      2. Query VirusTotal → get severity score (or None on failure)
-      3. Query OTX        → get severity score (or None on failure)
-      4. Compute weighted average using only the APIs that succeeded
-         (if one API fails, rebalance weights across the remaining two)
-      5. Return full result dict
-
-    Args:
-        ip_address (str): The IP to analyse e.g. '185.220.101.1'
-
-    Returns:
-        dict:
-        {
-            "ip":               str,
-            "abuseipdb_score":  float or None,
-            "virustotal_score": float or None,
-            "otx_score":        float or None,
-            "composite_score":  float,           # final weighted score 1.0-10.0
-            "severity_label":   str,             # Low / Medium / High
-            "apis_succeeded":   int,             # how many of 3 APIs returned data
-            "queried_at":       str,
-            "raw": {
-                "abuseipdb":  dict or None,
-                "virustotal": dict or None,
-                "otx":        dict or None,
-            }
-        }
     """
     print(f"\n[AGGREGATOR] Analysing IP: {ip_address}")
     print(f"[AGGREGATOR] Querying 3 threat intelligence APIs...")
@@ -97,18 +75,26 @@ def get_composite_threat_score(ip_address):
     raw_results["virustotal"] = virustotal_raw
     time.sleep(1)
 
-    # ── Step 3: Query AlienVault OTX ─────────────────────────────────────
+    # ── Step 3: Query AlienVault OTX (MODIFIED WITH LOCAL FILTER) ─────────
     print(f"[AGGREGATOR] 3/3 AlienVault OTX...")
-    otx_raw   = query_otx(ip_address)
-    otx_score = normalise_alienvault(
-        {
-            "pulse_count":      otx_raw.get("pulse_count",      0),
-            "tags":             otx_raw.get("tags",             []),
-            "malware_families": otx_raw.get("malware_families", []),
-            "reputation":       otx_raw.get("reputation",       0),
-        } if otx_raw else None
-    )
-    raw_results["otx"] = otx_raw
+    
+    if is_public_ip(ip_address):
+        # Proceed with normal API call if it's an external public threat source
+        otx_raw   = query_otx(ip_address)
+        otx_score = normalise_alienvault(
+            {
+                "pulse_count":      otx_raw.get("pulse_count",      0),
+                "tags":             otx_raw.get("tags",             []),
+                "malware_families": otx_raw.get("malware_families", []),
+                "reputation":       otx_raw.get("reputation",       0),
+            } if otx_raw else None
+        )
+        raw_results["otx"] = otx_raw
+    else:
+        # 👈 CHOSEN PLACEMENT: Safety fallback for local LAN targets (192.168.1.1, etc.)
+        print(f"[OTX SKIP] {ip_address} is a local LAN asset. Skipping global threat query.")
+        otx_score = 1.0  # Assign baseline minimum reputation risk score
+        raw_results["otx"] = {"message": "Skipped global API lookups for private LAN address space."}
 
     # ── Step 4: Compute weighted composite score ──────────────────────────
     composite_score = _compute_weighted_average(
@@ -142,25 +128,6 @@ def get_composite_threat_score(ip_address):
 
 # ── Helper: Weighted Average ──────────────────────────────────────────────
 def _compute_weighted_average(abuseipdb_score, virustotal_score, otx_score):
-    """
-    Computes the weighted average of the three API scores.
-
-    If one or more APIs failed (returned None), the weights of the
-    remaining APIs are rebalanced proportionally so they still sum to 1.0.
-
-    Examples:
-      All 3 succeed: (score_a * 0.4) + (score_v * 0.4) + (score_o * 0.2)
-      OTX fails:     (score_a * 0.5) + (score_v * 0.5)   [rebalanced]
-      Only 1 works:  that score is used as-is
-
-    Args:
-        abuseipdb_score  (float|None)
-        virustotal_score (float|None)
-        otx_score        (float|None)
-
-    Returns:
-        float: composite score 1.0-10.0
-    """
     scores_and_weights = [
         (abuseipdb_score,  WEIGHT_ABUSEIPDB),
         (virustotal_score, WEIGHT_VIRUSTOTAL),
@@ -186,14 +153,6 @@ def _compute_weighted_average(abuseipdb_score, virustotal_score, otx_score):
 
 # ── Helper: Severity Label ────────────────────────────────────────────────
 def _get_severity_label(composite_score):
-    """
-    Maps composite score to a human-readable severity label.
-
-    Thresholds match the Risk Correlation Engine (Week 3):
-      1.0 – 3.9  → Low
-      4.0 – 6.9  → Medium
-      7.0 – 10.0 → High
-    """
     if composite_score >= 7.0:
         return "High"
     elif composite_score >= 4.0:
@@ -246,15 +205,11 @@ if __name__ == "__main__":
     all_results = []
     
     for ip in TEST_IPS:
-        # Task 1: Generate the live API scores and composite score
         result = get_composite_threat_score(ip)
         all_results.append(result)
         
-        # ── Task 3: Save results to ThreatRecords table utilizing get_session() ──
         session = get_session()
         try:
-            import json  # Ensure json is imported to stringify raw details
-            
             new_record = ThreatRecord(
                 ip_address     = result["ip"],
                 source_api     = "aggregated_pipeline",
@@ -277,9 +232,9 @@ if __name__ == "__main__":
             print(f"[DB ERROR] Failed to save record for {ip}: {e}")
             
         finally:
-            session.close() # Safely release connection back to SQLite
+            session.close()
             
-        time.sleep(2)  # Pause to respect API rate limits
+        time.sleep(2)
 
     # ── Final summary table ───────────────────────────────────────────────
     print("\n" + "="*60)

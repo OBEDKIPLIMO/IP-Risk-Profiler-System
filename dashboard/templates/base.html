@@ -186,21 +186,19 @@
 </head>
 <body>
 
-<!-- ── Top Navbar ──────────────────────────────────────────────────── -->
-<nav class="top-navbar">
+<nav class="top-navbar d-flex w-100 justify-content-between align-items-center">
   <a href="/" class="brand">
     <i class="bi bi-shield-fill-check"></i>
     IP Risk Profiler
   </a>
-  <span class="uni">
-    <i class="bi bi-mortarboard-fill me-1"></i>
-    Kabarak University &nbsp;|&nbsp; Dept. of Computer Science &amp; IT
-  </span>
-  <span class="live-dot"></span>
-  <span style="color:#94a3b8;font-size:.76rem;">Live</span>
-  <button class="btn btn-sm btn-primary scan-btn" onclick="triggerScan()">
-    <i class="bi bi-radar me-1"></i>Scan Now
-  </button>
+  
+  <div class="d-flex align-items-center gap-2">
+    <span class="live-dot"></span>
+    <span style="color:#94a3b8;font-size:.76rem; margin-right: 0.5rem;">Live</span>
+    <button class="btn btn-sm btn-primary scan-btn" onclick="triggerScan()">
+      <i class="bi bi-radar me-1"></i>Scan Now
+    </button>
+  </div>
 </nav>
 
 <!-- ── Sidebar ─────────────────────────────────────────────────────── -->

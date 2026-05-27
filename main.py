@@ -3,11 +3,13 @@ main.py
 -------
 Application entry point — Flask app factory with Blueprints.
 
-Fix applied:
+Fixes applied:
   - Scheduler starts AFTER Flask is ready
   - First scan delayed by 60 seconds (not immediate)
   - Scan runs in background thread — never blocks Flask
   - Flask responds to requests instantly on startup
+  - SCAN LIMITER: Limits the background loops to exactly 5 iterations
+  - COUNTER DISPLAY: Explicitly prints "Scan 1", "Scan 2", etc., at the start of each run
 """
 
 import logging
@@ -97,31 +99,46 @@ def run_pipeline(subnet):
         print(f"[SCHEDULER ERROR] Pipeline failed: {e}")
 
 
-# ── Background scheduler (runs AFTER Flask starts) ────────────────────────
+# ── Background scheduler (FIXED SCOPE VARIATION) ─────────────────────────
 def start_scheduler(app, subnet, interval_minutes=5):
     """
     Starts a background thread that:
       1. Waits 60 seconds after Flask starts (lets server stabilise)
-      2. Runs the pipeline once
-      3. Then repeats every `interval_minutes` minutes
-
-    This runs OUTSIDE Flask — no request context needed.
+      2. Prints the current scan number explicitly
+      3. Runs the pipeline precisely 5 times
+      4. Breaks and shuts down the thread loop safely
     """
+    MAX_SCANS = 5  # 👈 MOVED HERE: Now both functions can see this variable!
+
     def scheduler_loop():
         print(f"[SCHEDULER] Waiting 60s before first scan...")
-        time_module.sleep(60)   # ← this is the key fix — delayed first run
+        time_module.sleep(60)   # ← delayed first run
 
-        while True:
+        scan_count = 0
+
+        while scan_count < MAX_SCANS:
+            scan_count += 1
+            
+            print(f"\n=======================================================")
+            print(f" [SCHEDULER] Scan {scan_count}")
+            print(f"=======================================================")
+            
             with app.app_context():
                 run_pipeline(subnet)
+            
+            if scan_count >= MAX_SCANS:
+                break
+                
             print(f"[SCHEDULER] Next scan in {interval_minutes} minute(s).")
             time_module.sleep(interval_minutes * 60)
+            
+        print(f"\n[SCHEDULER INFO] Automated tracking cycle threshold achieved ({MAX_SCANS}/{MAX_SCANS}).")
+        print(f"[SCHEDULER INFO] Background thread shutting down safely. Web dashboard routes remain active.")
 
     thread = threading.Thread(target=scheduler_loop, daemon=True, name="ScanScheduler")
     thread.start()
     print(f"[SCHEDULER] Background scheduler started — "
-          f"first scan in 60s, then every {interval_minutes} min.")
-
+          f"will run exactly {MAX_SCANS} times at {interval_minutes} min intervals.")
 
 # ── Entry point ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
@@ -139,7 +156,7 @@ if __name__ == "__main__":
     print(f"  Stats API  : http://localhost:5000/api/stats")
     print(f"  Health     : http://localhost:5000/api/health")
     print(f"  Subnet     : {TARGET_SUBNET}")
-    print(f"  Auto-scan  : every {SCAN_INTERVAL} min (first scan in 60s)")
+    print(f"  Auto-scan  : limited to 5 runs every {SCAN_INTERVAL} min")
     print("="*55 + "\n")
 
     # Start the background scheduler FIRST (non-blocking — runs in thread)
