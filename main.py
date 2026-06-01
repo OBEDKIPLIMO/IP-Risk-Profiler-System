@@ -143,7 +143,7 @@ def start_scheduler(app, subnet, interval_minutes=5):
 # ── Entry point ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     TARGET_SUBNET    = "192.168.100.0/24"
-    SCAN_INTERVAL    = 5   # minutes between automatic scans
+    SCAN_INTERVAL    = 1   # minutes between automatic scans
 
     app = create_app()
 

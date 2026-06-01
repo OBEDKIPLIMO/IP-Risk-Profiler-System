@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - IP Risk Profiler{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4>{{ title }}</h4>
+    <div class="last-updated">Last scan evaluation cycle executed live</div>
+  </div>
+  <a href="/" class="btn btn-sm btn-outline-secondary back-btn-ui">
+    <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
+  </a>
+</div>
+
+<div class="row g-3">
+  {% for key, value in data_items.items() %}
+  <div class="col-md-4 col-sm-6">
+    <div class="card section-card h-100 border-0">
+      <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
+        <span class="text-uppercase font-monospace text-muted small" style="font-size: 0.72rem;">
+          {{ key.replace('_', ' ') }}
+        </span>
+        <i class="bi bi-cpu text-primary opacity-25"></i>
+      </div>
+      <div class="card-body py-3 px-3 d-flex flex-column justify-content-center">
+        {% if value is mapping %}
+          <div class="font-monospace small text-secondary">
+            {% for sub_key, sub_val in value.items() %}
+              <div class="d-flex justify-content-between border-bottom border-light py-1" style="border-color: rgba(255,255,255,0.02) !important;">
+                <span>{{ sub_key }}:</span>
+                <span class="fw-bold text-light">{{ sub_val }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <span class="stat-value text-light fs-3 font-monospace">{{ value }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -4,237 +4,247 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{% block title %}IP Risk Profiler{% endblock %}</title>
-
-  <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <!-- Bootstrap Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
-
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --navy:     #0d1b2a;
-      --blue:     #1a56db;
-      --bg:       #f1f5f9;
-      --sidebar-w: 230px;
+      --bg-dark:       #0b111e;
+      --card-bg:       #131c2e;
+      --sidebar-bg:    #111927;
+      --border-color:  #1e293b;
+      --text-main:     #f8fafc;
+      --text-muted:    #94a3b8;
+      --blue-accent:   #1a56db;
+      --blue-glow:     #3b82f6;
+      --sidebar-w:     240px;
     }
-    body { background: var(--bg); font-family: 'Segoe UI', system-ui, sans-serif; }
 
-    /* ── Navbar ── */
+    body { 
+      background: var(--bg-dark); 
+      color: var(--text-main);
+      font-family: 'Segoe UI', system-ui, sans-serif; 
+      margin: 0;
+    }
+
+    /* ── Top Navbar Header ─────────────────────────────────────── */
     .top-navbar {
-      background: var(--navy); height: 58px;
-      position: fixed; top:0; left:0; right:0; z-index:1050;
-      display:flex; align-items:center; padding:0 1.4rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+      background: var(--bg-dark); height: 65px;
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1050;
+      display: flex; align-items: center; padding: 0 1.5rem;
+      border-bottom: 1px solid var(--border-color);
     }
-    .top-navbar .brand {
-      color:#fff; font-size:1.05rem; font-weight:700;
-      text-decoration:none; display:flex; align-items:center; gap:.55rem;
+    
+    .hamburger-menu-btn {
+      background: transparent; border: none; color: var(--text-muted);
+      font-size: 1.35rem; margin-right: 0.8rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      padding: .25rem; border-radius: 6px; transition: all .15s;
     }
-    .top-navbar .brand i { color:#60a5fa; font-size:1.35rem; }
-    .top-navbar .uni {
-      margin-left:auto; color:#94a3b8; font-size:.78rem;
-    }
-    .live-dot {
-      width:8px; height:8px; background:#22c55e; border-radius:50%;
-      display:inline-block; margin:0 .4rem 0 1rem;
-      animation: blink 1.8s infinite;
-    }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
-    .scan-btn { font-size:.8rem; padding:.28rem .85rem; margin-left:.8rem; }
+    .hamburger-menu-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
 
-    /* ── Sidebar ── */
-    .sidebar {
-      position:fixed; top:58px; left:0; bottom:0;
-      width:var(--sidebar-w); background:#fff;
-      border-right:1px solid #e2e8f0;
-      padding: .8rem 0; z-index:1000; overflow-y:auto;
+    .top-navbar .brand {
+      color:#fff; font-size:1.1rem; font-weight:700;
+      text-decoration:none; display:flex; align-items:center; gap:.45rem;
     }
+    .top-navbar .brand i { color: var(--blue-glow); font-size:1.4rem; }
+    .top-navbar .brand .sub-lbl { font-size: .65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+
+    .right-nav-container { margin-left: auto; display: flex; align-items: center; gap: 1.3rem; }
+    .nav-icon-link { color: var(--text-muted); font-size: 1.15rem; text-decoration: none; transition: color .15s; }
+    .nav-icon-link:hover { color: var(--text-main); }
+
+    .scan-btn { 
+      background: var(--blue-accent); border: none; color: #fff;
+      font-size: .85rem; font-weight: 600; padding: .45rem 1.1rem; 
+      border-radius: 8px; box-shadow: 0 0 12px rgba(26, 86, 219, 0.4);
+      transition: all .15s; display: flex; align-items: center; gap: .45rem;
+    }
+    .scan-btn:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 0 16px rgba(37, 99, 235, 0.6); }
+
+    /* ── Collapsible Sidebar ──────────────────────────────────── */
+    .sidebar {
+      position: fixed; top: 65px; left: 0; bottom: 0;
+      width: var(--sidebar-w); background: var(--sidebar-bg);
+      border-right: 1px solid var(--border-color);
+      padding: 1.2rem 0; z-index: 1000; display: flex; flex-direction: column;
+      transition: transform .25s ease-in-out;
+    }
+    body.collapsed .sidebar { transform: translateX(calc(-1 * var(--sidebar-w))); }
+
     .sidebar .nav-label {
-      font-size:.68rem; font-weight:700; letter-spacing:1px;
-      text-transform:uppercase; color:#94a3b8;
-      padding:.7rem 1.1rem .25rem;
+      font-size: .68rem; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; color: #4b5563; padding: 1.2rem 1.5rem .4rem;
     }
     .sidebar .nav-link {
-      display:flex; align-items:center; gap:.65rem;
-      color:#475569; padding:.5rem 1.1rem;
-      font-size:.87rem; font-weight:500;
-      transition: background .15s, color .15s;
+      display: flex; align-items: center; gap: .75rem;
+      color: var(--text-muted); padding: .65rem 1.5rem;
+      font-size: .9rem; font-weight: 500; text-decoration: none;
+      transition: all .15s;
     }
-    .sidebar .nav-link:hover,
-    .sidebar .nav-link.active { background:#eff6ff; color:var(--blue); }
-    .sidebar .nav-link i { font-size:.95rem; }
+    .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,0.02); }
+    .sidebar .nav-link.active { color: var(--blue-glow); background: rgba(59, 130, 246, 0.04); font-weight: 600; }
+    .sidebar .nav-link i { font-size: 1.05rem; }
 
-    /* ── Layout ── */
+    /* Static Status Pill Indicator Box */
+    .sidebar-status-box {
+      margin: auto 1.2rem 0; background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border-color); padding: .65rem 1rem; border-radius: 6px;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .status-dot { width: 7px; height: 7px; background: #22c55e; border-radius: 50%; }
+    .status-txt { font-size: .75rem; font-weight: 700; color: #22c55e; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* ── Main View Panel Container ─────────────────────────────── */
     .main-content {
-      margin-left: var(--sidebar-w);
-      margin-top: 58px;
-      padding: 1.5rem;
-      min-height: calc(100vh - 58px);
+      margin-left: var(--sidebar-w); margin-top: 65px;
+      padding: 2rem; min-height: calc(100vh - 65px - 53px);
+      transition: margin-left .25s ease-in-out;
     }
+    body.collapsed .main-content { margin-left: 0; }
+
+    /* Unified Metadata Elements Line Control */
     .page-header {
-      display:flex; align-items:center;
-      justify-content:space-between; margin-bottom:1.3rem;
+      display: flex; align-items: flex-start;
+      justify-content: space-between; margin-bottom: 1.5rem; position: relative;
     }
-    .page-header h4 { font-weight:700; color:#1e293b; margin:0; }
-    .last-updated   { font-size:.76rem; color:#94a3b8; }
+    .page-header h4 { font-weight: 700; color: #fff; margin: 0; font-size: 1.35rem; }
+    .last-updated { font-size: .76rem; color: var(--text-muted); margin-top: 0.3rem; text-align: right; }
+    .back-btn-ui { font-size: .78rem; padding: .35rem .85rem; border-radius: 6px; font-weight: 600; }
 
-    /* ── Stat cards ── */
+    /* ── Base Component Cards ──────────────────────────────────── */
     .stat-card {
-      border:none; border-radius:12px;
-      padding:1.1rem 1.3rem;
-      display:flex; align-items:center; gap:.9rem;
-      box-shadow:0 1px 4px rgba(0,0,0,.07);
-      transition: transform .15s, box-shadow .15s;
+      background: var(--card-bg); border: 1px solid var(--border-color);
+      border-radius: 8px; padding: 1.3rem 1.5rem; display: flex; align-items: center; gap: 1.1rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     }
-    .stat-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.12); }
     .stat-icon {
-      width:46px; height:46px; border-radius:10px;
-      display:flex; align-items:center; justify-content:center;
-      font-size:1.3rem; flex-shrink:0;
+      width: 44px; height: 44px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;
     }
-    .stat-value { font-size:1.85rem; font-weight:800; color:#1e293b; line-height:1; }
-    .stat-label { font-size:.76rem; color:#64748b; font-weight:500; margin-top:.2rem; }
+    .stat-value { font-size: 2rem; font-weight: 700; color: #fff; line-height: 1; }
+    .stat-label { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: .25rem; }
+    
+    .card-assets .stat-icon { background: rgba(59,130,246,0.08); color: var(--blue-glow); }
+    .card-high .stat-icon   { background: rgba(239,68,68,0.08); color: #ef4444; }
+    .card-medium .stat-icon { background: rgba(245,158,11,0.08); color: #f59e0b; }
+    .card-avg .stat-icon    { background: rgba(16,185,129,0.08); color: #10b981; }
 
-    /* card colour themes */
-    .card-assets { background:#e1effe; } .icon-assets { background:#bfdbfe; color:#1d4ed8; }
-    .card-high   { background:#fde8e8; } .icon-high   { background:#fecaca; color:#dc2626; }
-    .card-medium { background:#fef3c7; } .icon-medium { background:#fde68a; color:#d97706; }
-    .card-avg    { background:#def7ec; } .icon-avg    { background:#a7f3d0; color:#059669; }
-
-    /* ── Section card ── */
-    .section-card { background:#fff; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.07); border:none; }
+    .section-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; }
     .section-card .card-header {
-      background:#fff; border-bottom:1px solid #f1f5f9;
-      border-radius:12px 12px 0 0;
-      padding:.9rem 1.2rem;
-      display:flex; align-items:center; justify-content:space-between;
+      background: transparent; border-bottom: 1px solid var(--border-color);
+      padding: 1rem 1.3rem; display: flex; align-items: center; justify-content: space-between;
     }
-    .section-card .card-header h6 { margin:0; font-weight:700; color:#1e293b; font-size:.92rem; }
+    .section-card .card-header h6 { margin: 0; font-weight: 700; color: #fff; font-size: .92rem; }
 
-    /* ── Table ── */
+    /* Dark Mode Interactive Grid Tables */
     .data-table th {
-      font-size:.73rem; font-weight:700; text-transform:uppercase;
-      letter-spacing:.5px; color:#64748b; background:#f8fafc;
-      border-bottom:2px solid #e2e8f0; cursor:pointer;
-      user-select:none; white-space:nowrap;
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .5px; color: #4b5563; border-bottom: 1px solid var(--border-color); padding: 0.85rem 1rem;
     }
-    .data-table th:hover { background:#f1f5f9; color:var(--blue); }
-    .data-table th.sorted { color:var(--blue); }
-    .data-table td {
-      font-size:.84rem; vertical-align:middle;
-      color:#334155; border-bottom:1px solid #f1f5f9;
-    }
-    .data-table tr:hover td { background:#f8fafc; }
-    .ip-mono { font-family:monospace; font-weight:600; }
+    .data-table td { font-size: .86rem; vertical-align: middle; padding: 1rem; color: #cbd5e1; border-bottom: 1px solid rgba(30,41,59,0.4); }
+    .data-table tr:hover td { background: rgba(255,255,255,0.01); color: #fff; }
+    .ip-mono { font-family: monospace; font-weight: 600; color: #3b82f6; }
 
-    /* ── Severity badges ── */
-    .sev-badge {
-      padding:.22rem .6rem; border-radius:20px;
-      font-size:.72rem; font-weight:700; letter-spacing:.3px;
-    }
-    .badge-high   { background:#fee2e2; color:#dc2626; }
-    .badge-medium { background:#fef3c7; color:#d97706; }
-    .badge-low    { background:#dcfce7; color:#16a34a; }
-    .score-high   { color:#dc2626; font-weight:700; }
-    .score-medium { color:#d97706; font-weight:700; }
-    .score-low    { color:#059669; font-weight:700; }
+    .sev-badge { padding: .2rem .65rem; border-radius: 20px; font-size: .72rem; font-weight: 700; display: inline-flex; align-items: center; gap: .3rem; }
+    .badge-high   { background: rgba(239,68,68,0.08); color: #f87171; border: 1px solid rgba(239,68,68,0.15); }
+    .badge-medium { background: rgba(245,158,11,0.08); color: #fbbf24; border: 1px solid rgba(245,158,11,0.15); }
+    .badge-low    { background: rgba(34,197,94,0.08); color: #4ade80; border: 1px solid rgba(34,197,94,0.15); }
 
-    /* ── Filter bar ── */
-    .filter-bar { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+    .filter-bar { display: flex; gap: .35rem; align-items: center; }
     .btn-filter {
-      font-size:.76rem; padding:.25rem .75rem; border-radius:20px;
-      font-weight:600; border:1.5px solid #e2e8f0;
-      background:#fff; color:#64748b; cursor:pointer; transition:all .15s;
+      font-size: .75rem; padding: .3rem .8rem; border-radius: 4px;
+      font-weight: 600; border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); transition: all .15s;
     }
-    .btn-filter:hover,
-    .btn-filter.active         { border-color:var(--blue); color:var(--blue); background:#eff6ff; }
-    .btn-filter.f-high.active  { border-color:#dc2626; color:#dc2626; background:#fee2e2; }
-    .btn-filter.f-med.active   { border-color:#d97706; color:#d97706; background:#fef3c7; }
-    .btn-filter.f-low.active   { border-color:#16a34a; color:#16a34a; background:#dcfce7; }
+    .btn-filter:hover { color: #fff; background: rgba(255,255,255,0.02); }
+    .btn-filter.active { background: var(--blue-accent); color: #fff; border-color: var(--blue-accent); }
 
-    /* ── Search ── */
-    .search-wrap { position:relative; }
     .search-wrap input {
-      padding-left:1.9rem; font-size:.81rem;
-      border-radius:20px; border:1.5px solid #e2e8f0; width:190px;
+      padding-left: 2rem; font-size: .8rem; color: #fff; border-radius: 4px; border: 1px solid var(--border-color); background: transparent; width: 200px; height: 32px;
     }
-    .search-wrap .bi-search {
-      position:absolute; left:.6rem; top:50%;
-      transform:translateY(-50%); color:#94a3b8; font-size:.82rem;
-    }
+    .search-wrap .bi-search { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: #4b5563; font-size: .8rem; }
 
-    /* ── Spinner overlay ── */
-    .spinner-overlay {
-      display:none; position:absolute; inset:0;
-      background:rgba(255,255,255,.8);
-      align-items:center; justify-content:center; z-index:10;
-    }
-    .spinner-overlay.show { display:flex; }
+    .btn-refresh-ui { background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 4px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
+    .btn-refresh-ui:hover { color: #fff; background: rgba(255,255,255,0.02); }
 
-    /* ── Ack button ── */
-    .btn-ack { font-size:.7rem; padding:.18rem .5rem; border-radius:6px; }
-    .acked   { color:#94a3b8; font-style:italic; font-size:.76rem; }
+    .btn-ack { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); font-size: .72rem; padding: .25rem .65rem; border-radius: 4px; }
+    .acked { color: #4b5563; font-size: .75rem; display: flex; align-items: center; gap: .25rem; }
 
-    /* ── Footer ── */
+    /* ── Footer ───────────────────────────────────────────────── */
     footer {
-      margin-left:var(--sidebar-w);
-      text-align:center; font-size:.73rem;
-      color:#94a3b8; padding:.8rem;
+      margin-left: var(--sidebar-w); text-align: center; font-size: .72rem;
+      color: #334155; padding: 1.2rem; border-top: 1px solid var(--border-color);
+      transition: margin-left .25s ease-in-out; letter-spacing: 0.5px;
     }
+    body.collapsed footer { margin-left: 0; }
   </style>
   {% block extra_head %}{% endblock %}
 </head>
 <body>
 
-<nav class="top-navbar d-flex w-100 justify-content-between align-items-center">
+<nav class="top-navbar">
+  <button class="hamburger-menu-btn" onclick="toggleSidebar()">
+    <i class="bi bi-list"></i>
+  </button>
+
   <a href="/" class="brand">
     <i class="bi bi-shield-fill-check"></i>
-    IP Risk Profiler
+    <span>IP Risk Profiler <span class="sub-lbl">Security Dashboard</span></span>
   </a>
-  
-  <div class="d-flex align-items-center gap-2">
-    <span class="live-dot"></span>
-    <span style="color:#94a3b8;font-size:.76rem; margin-right: 0.5rem;">Live</span>
-    <button class="btn btn-sm btn-primary scan-btn" onclick="triggerScan()">
-      <i class="bi bi-radar me-1"></i>Scan Now
+
+  <div class="right-nav-container">
+    <a href="#" class="nav-icon-link"><i class="bi bi-gear"></i></a>
+    <button class="btn scan-btn" onclick="triggerScan()">
+      <i class="bi bi-brightness-high"></i> Scan Now
     </button>
   </div>
 </nav>
 
-<!-- ── Sidebar ─────────────────────────────────────────────────────── -->
 <nav class="sidebar">
   <div class="nav-label">Main Menu</div>
-  <a href="/"            class="nav-link {{ 'active' if request.path == '/' }}">
-    <i class="bi bi-speedometer2"></i> Dashboard
+  <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+    <i class="bi bi-grid-1x2-fill"></i> Dashboard
   </a>
-  <a href="/assets-view" class="nav-link {{ 'active' if 'assets' in request.path }}">
-    <i class="bi bi-hdd-network"></i> Assets
+  <a href="/assets-view" class="nav-link {% if 'assets' in request.path %}active{% endif %}">
+    <i class="bi bi-folder-fill"></i> Assets
   </a>
 
-  <div class="nav-label mt-2">Quick Links</div>
-  <a href="/api/alerts"  class="nav-link" target="_blank"><i class="bi bi-bell"></i> Alerts JSON</a>
-  <a href="/api/assets"  class="nav-link" target="_blank"><i class="bi bi-database"></i> Assets JSON</a>
-  <a href="/api/stats"   class="nav-link" target="_blank"><i class="bi bi-bar-chart"></i> Stats JSON</a>
-  <a href="/api/health"  class="nav-link" target="_blank"><i class="bi bi-heart-pulse"></i> Health</a>
+  <div class="nav-label">Quick Links</div>
+  <a href="/api/alerts-view" class="nav-link {% if 'alerts-view' in request.path %}active{% endif %}">
+    <i class="bi bi-bell-fill"></i> Alerts JSON
+  </a>
+  <a href="/api/stats-view" class="nav-link {% if 'stats-view' in request.path %}active{% endif %}">
+    <i class="bi bi-database-fill"></i> Assets JSON
+  </a>
+  <a href="/api/health-view" class="nav-link {% if 'health-view' in request.path %}active{% endif %}">
+    <i class="bi bi-bar-chart-fill"></i> Stats JSON
+  </a>
+  <a href="/api/health" class="nav-link {% if request.path == '/api/health' %}active{% endif %}">
+    <i class="bi bi-heart-pulse-fill"></i> Health
+  </a>
+
+  <div class="sidebar-status-box">
+    <div class="status-dot"></div>
+    <div class="status-txt">Live</div>
+  </div>
 </nav>
 
-<!-- ── Main Content ─────────────────────────────────────────────────── -->
 <main class="main-content">
   {% block content %}{% endblock %}
 </main>
 
-<!-- ── Footer ──────────────────────────────────────────────────────── -->
 <footer>
-  Automated IP Risk Profiler System &nbsp;|&nbsp;
-  Obed Kiplimo &nbsp;|&nbsp; BSCSF/MK/1234/09/23 &nbsp;|&nbsp;
-  Kabarak University &copy; 2026
+  &copy; 2026 IP RISK PROFILER. PRECISION CYBERSECURITY UNIT.
 </footer>
 
-<!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- Global: Scan Now button ────────────────────────────────────────── -->
 <script>
+// Toggle Sidebar state implementation function
+function toggleSidebar() {
+  document.body.classList.toggle('collapsed');
+}
+
 async function triggerScan() {
   const btn = document.querySelector('.scan-btn');
   btn.disabled = true;
@@ -242,8 +252,8 @@ async function triggerScan() {
   try {
     const res  = await fetch('/api/scan/trigger', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({subnet: '192.168.100.0/24'})
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({subnet:'192.168.1.0/24'})
     });
     const data = await res.json();
     alert(`Scan complete!\nAssets found: ${data.assets_found ?? 0}\nAlerts generated: ${data.alerts_generated ?? 0}`);
@@ -252,10 +262,11 @@ async function triggerScan() {
     alert('Scan failed: ' + e.message);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-radar me-1"></i>Scan Now';
+    btn.innerHTML = '<i class="bi bi-brightness-high"></i> Scan Now';
   }
 }
 </script>
+
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>
