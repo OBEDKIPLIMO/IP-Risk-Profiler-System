@@ -1,0 +1,16 @@
+"""
+tests/conftest.py
+-----------------
+Shared pytest configuration and fixtures.
+
+conftest.py is automatically loaded by pytest before any tests run.
+Fixtures defined here are available to ALL test files without importing.
+"""
+
+import sys
+import os
+
+# ── Add project root to Python path ──────────────────────────────
+# This ensures all imports work correctly when running pytest from
+# the project root directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
