@@ -10,6 +10,7 @@ Fixes applied:
   - Flask responds to requests instantly on startup
   - SCAN LIMITER: Limits the background loops to exactly 5 iterations
   - COUNTER DISPLAY: Explicitly prints "Scan 1", "Scan 2", etc., at the start of each run
+  - FIX 4: create_app() accepts testing=False and db_session=None for integration tests
 """
 
 import logging
@@ -27,10 +28,17 @@ logging.basicConfig(
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
 
-def create_app():
+def create_app(testing=False, db_session=None):
     """
     Application factory.
     Creates, configures, and returns the Flask app instance.
+
+    Args:
+        testing (bool): When True, skips scheduler startup and API key
+                        validation so tests run cleanly with no side effects.
+        db_session:     Optional SQLAlchemy session injected by tests.
+                        Stored in app.config["DB_SESSION"] so routes can
+                        use it instead of opening their own session.
     """
     app = Flask(__name__, template_folder="dashboard/templates")
 
@@ -39,9 +47,15 @@ def create_app():
     app.config["DEBUG"]                          = False
     app.config["SQLALCHEMY_DATABASE_URI"]        = Config.DATABASE_URL
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["TESTING"]                        = testing
 
-    # ── Validate API keys ─────────────────────────────────────────────────
-    Config.validate()
+    # FIX 4 — store injected test session so routes can access it
+    if db_session is not None:
+        app.config["DB_SESSION"] = db_session
+
+    # ── Validate API keys (skip in test mode — no real keys needed) ───────
+    if not testing:
+        Config.validate()
 
     # ── Initialise DB tables ──────────────────────────────────────────────
     with app.app_context():
@@ -118,20 +132,20 @@ def start_scheduler(app, subnet, interval_minutes=5):
 
         while scan_count < MAX_SCANS:
             scan_count += 1
-            
+
             print(f"\n=======================================================")
             print(f" [SCHEDULER] Scan {scan_count}")
             print(f"=======================================================")
-            
+
             with app.app_context():
                 run_pipeline(subnet)
-            
+
             if scan_count >= MAX_SCANS:
                 break
-                
+
             print(f"[SCHEDULER] Next scan in {interval_minutes} minute(s).")
             time_module.sleep(interval_minutes * 60)
-            
+
         print(f"\n[SCHEDULER INFO] Automated tracking cycle threshold achieved ({MAX_SCANS}/{MAX_SCANS}).")
         print(f"[SCHEDULER INFO] Background thread shutting down safely. Web dashboard routes remain active.")
 
@@ -140,10 +154,11 @@ def start_scheduler(app, subnet, interval_minutes=5):
     print(f"[SCHEDULER] Background scheduler started — "
           f"will run exactly {MAX_SCANS} times at {interval_minutes} min intervals.")
 
+
 # ── Entry point ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     TARGET_SUBNET    = "192.168.100.0/24"
-    SCAN_INTERVAL    = 1 # minutes between automatic scans
+    SCAN_INTERVAL    = 1  # minutes between automatic scans
 
     app = create_app()
 

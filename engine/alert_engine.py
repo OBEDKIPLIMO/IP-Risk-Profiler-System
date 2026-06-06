@@ -22,7 +22,8 @@ def generate_alerts(assets_list, threat_scores_dict):
     for asset in assets_list:
         ip                = asset.get("ip_address")
         asset_criticality = asset.get("criticality_score", 1)
-        threat_severity   = threat_scores_dict.get(ip, 1.0)
+        threat_data       = threat_scores_dict.get(ip)
+        threat_severity   = threat_data["composite_score"] if isinstance(threat_data, dict) else (threat_data or 1.0)
         risk              = compute_risk(asset_criticality, threat_severity)
 
         alert = {

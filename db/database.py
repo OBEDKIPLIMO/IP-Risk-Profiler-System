@@ -41,7 +41,7 @@ def init_db():
 
 
 # ── Save Alerts (Upsert) ──────────────────────────────────────────────────
-def save_alerts_to_db(alerts_list):
+def save_alerts_to_db(alerts_list, session=None):
     """
     Saves a list of alert dicts to the risk_alerts table.
 
@@ -59,6 +59,9 @@ def save_alerts_to_db(alerts_list):
               risk_score, severity_label
             Optional:
               asset_id, threat_record_id
+        session: optional SQLAlchemy session (used by tests to inject
+                 an in-memory DB session). If None, a new SessionLocal()
+                 is created and closed automatically.
 
     Returns:
         dict: { "inserted": int, "updated": int, "errors": int }
@@ -67,7 +70,12 @@ def save_alerts_to_db(alerts_list):
         print("[DB] No alerts to save.")
         return {"inserted": 0, "updated": 0, "errors": 0}
 
-    session  = get_session()
+    # FIX: only create our own session when none is injected.
+    # Previously the injected session was silently overwritten here.
+    own_session = session is None
+    if own_session:
+        session = get_session()
+
     inserted = 0
     updated  = 0
     errors   = 0
@@ -128,7 +136,10 @@ def save_alerts_to_db(alerts_list):
         print(f"[DB ERROR] Transaction failed, rolled back: {e}")
         raise
     finally:
-        session.close()
+        # Only close the session if we opened it ourselves.
+        # Closing an injected test session would destroy the in-memory DB.
+        if own_session:
+            session.close()
 
     return {"inserted": inserted, "updated": updated, "errors": errors}
 
