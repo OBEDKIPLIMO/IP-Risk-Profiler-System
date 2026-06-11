@@ -8,7 +8,6 @@
   <span class="last-updated" id="last-updated">Loading...</span>
 </div>
 
-<!-- Mini stat row -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="stat-card card-assets">
@@ -30,7 +29,6 @@
   </div>
 </div>
 
-<!-- Asset table -->
 <div class="section-card card">
   <div class="card-header">
     <h6><i class="bi bi-table me-2"></i>Discovered Devices</h6>
@@ -117,21 +115,28 @@ function renderAssets(assets) {
     const sc = a.criticality_score;
     const bc = sc >= 7 ? 'badge-high' : sc >= 4 ? 'badge-medium' : 'badge-low';
     const ls = a.last_seen ? new Date(a.last_seen).toLocaleString() : '—';
+    
+    // Formatted Open Ports tags — styled explicitly to stay sharp within dark mode layers
     const ports = a.open_ports
       ? a.open_ports.split(',').map(p =>
-          `<span class="badge bg-light text-dark border me-1"
-                 style="font-size:.7rem;">${p.trim()}</span>`
+          `<span class="badge text-white border me-1"
+                 style="font-size:.7rem; background: rgba(255,255,255,0.05); border-color: var(--border-color) !important;">${p.trim()}</span>`
         ).join('')
-      : '<span class="text-muted">—</span>';
+      : '—';
 
     return `
       <tr>
-        <td class="ip-mono">${a.ip_address}</td>
-        <td>${a.hostname || '<span class="text-muted">Unknown</span>'}</td>
-        <td style="font-size:.8rem;">${a.os_type || '<span class="text-muted">—</span>'}</td>
-        <td>${ports}</td>
+        <td class="ip-mono" style="color: #ffffff !important;">${a.ip_address}</td>
+        
+        <td style="color: #ffffff !important;">${a.hostname || 'Unknown'}</td>
+        
+        <td style="font-size:.8rem; color: #ffffff !important;">${a.os_type || '—'}</td>
+        
+        <td style="color: #ffffff !important;">${ports}</td>
+        
         <td><span class="sev-badge ${bc}">${sc}/10</span></td>
-        <td style="font-size:.77rem;color:#94a3b8;">${ls}</td>
+        
+        <td style="font-size:.77rem; color: #94a3b8;">${ls}</td>
       </tr>`;
   }).join('');
 }
