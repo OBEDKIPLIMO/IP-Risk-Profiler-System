@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h4><i class="bi bi-shield-check-fill me-2 text-success"></i>Engine Integrity Verification Matrix</h4>
+  <div class="last-updated">Last Run Audit: {{ data.last_run }}</div>
+</div>
+
+<div class="section-card card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6><i class="bi bi-cpu-fill me-2"></i>Automated Sprint 6 Attack Simulations</h6>
+    <span class="badge {% if data.status == 'MET' %}bg-success{% else %}bg-danger{% endif %}">{{ data.status }}</span>
+  </div>
+  <div class="card-body">
+    <h3 class="text-white mb-3">Prioritisation Engine Accuracy: <span class="text-success">{{ data.accuracy }}</span></h3>
+    
+    <table class="table data-table m-0">
+      <thead>
+        <tr>
+          <th>Scenario Ref</th>
+          <th>Boundary Attack Vector Condition</th>
+          <th>Calculated Vector Score</th>
+          <th>Assigned Engine Severity</th>
+          <th>Validation</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in data.scenarios %}
+        <tr>
+          <td class="ip-mono">S{{ s.id }}</td>
+          <td>{{ s.name }}</td>
+          <td><span class="badge badge-medium">{{ s.score }}</span></td>
+          <td>{{ s.alert }}</td>
+          <td><span class="text-success">✔ {{ s.status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

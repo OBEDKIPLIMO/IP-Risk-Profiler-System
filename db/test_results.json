@@ -1,0 +1,28 @@
+{
+    "last_run": "2026-06-15 18:29:10",
+    "accuracy": "100.0%",
+    "status": "MET",
+    "scenarios": [
+        {
+            "id": 1,
+            "name": "High Risk boundary condition",
+            "score": "72.0",
+            "alert": "High",
+            "status": "PASS"
+        },
+        {
+            "id": 2,
+            "name": "Low Risk Environmental Noise",
+            "score": "4.0",
+            "alert": "Low",
+            "status": "PASS"
+        },
+        {
+            "id": 3,
+            "name": "Medium Ceiling Boundary Protection",
+            "score": "40.0",
+            "alert": "Medium",
+            "status": "PASS"
+        }
+    ]
+}

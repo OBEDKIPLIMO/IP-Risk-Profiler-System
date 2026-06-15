@@ -55,12 +55,19 @@
     .nav-icon-link:hover { color: var(--text-main); }
 
     .scan-btn { 
-      background: var(--blue-accent); border: none; color: #fff;
+      background: #18377b; 
+      border: 1px solid ;
+      color: #fff;
       font-size: .85rem; font-weight: 600; padding: .45rem 1.1rem; 
-      border-radius: 8px; box-shadow: 0 0 12px rgba(26, 86, 219, 0.4);
+      border-radius: 8px; box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
       transition: all .15s; display: flex; align-items: center; gap: .45rem;
     }
-    .scan-btn:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 0 16px rgba(37, 99, 235, 0.6); }
+    .scan-btn:hover { 
+      background: #0e1f4d; 
+      border-color: ;
+      transform: translateY(-1px); 
+      box-shadow: 0 0 14px rgba(59, 130, 246, 0.4); 
+    }
 
     /* ── Collapsible Sidebar ──────────────────────────────────── */
     .sidebar {
@@ -294,6 +301,16 @@
       transition: margin-left .25s ease-in-out; letter-spacing: 0.5px;
     }
     body.collapsed footer { margin-left: 0; }
+    
+    /* ──  FORCE ALL H6 HEADERS TO CRISP WHITE (UNIVERSAL) ──────────────── */
+    h6 {
+        color: #ffffff !important;
+    }
+
+    /* Forces the small descriptive icons right next to those titles to be white too */
+    h6 i {
+        color: #ffffff !important;
+    }
   </style>
   {% block extra_head %}{% endblock %}
 </head>
@@ -312,7 +329,7 @@
   <div class="right-nav-container">
     <a href="#" class="nav-icon-link"><i class="bi bi-gear"></i></a>
     <button class="btn scan-btn" onclick="triggerScan()">
-      <i class="bi bi-brightness-high"></i> Scan Now
+      Scan Now
     </button>
   </div>
 </nav>
@@ -338,6 +355,9 @@
   </a>
   <a href="/api/health" class="nav-link {% if request.path == '/api/health' %}active{% endif %}">
     <i class="bi bi-heart-pulse-fill"></i> Health
+  </a>
+<a href="/engine-test" class="nav-link {% if request.path == '/engine-test' %}active{% endif %}">
+    <i class="bi bi-shield-fill-check"></i> Engine Self-Test
   </a>
 
   <div class="sidebar-status-box">
@@ -378,7 +398,7 @@ async function triggerScan() {
     alert('Scan failed: ' + e.message);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-brightness-high"></i> Scan Now';
+    btn.innerHTML = 'Scan Now';
   }
 }
 </script>

@@ -5,7 +5,7 @@
 <div class="page-header">
   <div>
     <h4>{{ title }}</h4>
-    <div class="last-updated">Last scan evaluation cycle executed live</div>
+    <div class="last-updated"></div>
   </div>
   <a href="/" class="btn btn-sm btn-outline-secondary back-btn-ui">
     <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
@@ -17,9 +17,9 @@
   <div class="col-md-4 col-sm-6">
     <div class="card section-card h-100 border-0">
       <div class="card-header bg-transparent py-2 px-3 d-flex align-items-center justify-content-between">
-        <span class="text-uppercase font-monospace text-muted small" style="font-size: 0.72rem;">
+        <h6 class="text-uppercase font-monospace style="font-size: 0.72rem; margin: 0;">
           {{ key.replace('_', ' ') }}
-        </span>
+        </h6>
         <i class="bi bi-cpu text-primary opacity-25"></i>
       </div>
       <div class="card-body py-3 px-3 d-flex flex-column justify-content-center">
