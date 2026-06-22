@@ -1,18 +1,56 @@
-# Environment variables (Crucial for Security!)
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
 .env
+.env.*
+secrets.json
 
-# Python junk
+# ==========================================
+# Python Automation junk
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
+*.tpl.py
+.pytest_cache/
+.htmlcov/
+htmlcov/
+.coverage
+.cache/
+
+# ==========================================
+# Virtual Environments Layout
+# ==========================================
 venv/
 .venv/
+env/
+ENV/
 
-# Database & Instance folders
+# ==========================================
+# Local Databases & Temporary Logs
+# ==========================================
 *.db
 *.sqlite3
 instance/
+*.log
 
-# IDE & OS
+# ==========================================
+#  JavaScript / Node.js Dependencies
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+# IDE, Editors & OS Files
+# ==========================================
 .vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
 .DS_Store
+Thumbs.db
