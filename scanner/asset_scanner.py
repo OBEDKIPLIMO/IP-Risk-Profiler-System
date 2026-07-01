@@ -89,19 +89,19 @@ def parse_host(scanner, ip):
 
 def scan_subnet(subnet):
     print(f"\n[SCANNER] Starting scan on subnet: {subnet}")
-    print(f"[SCANNER] Arguments: -sV --open -T4  --host-timeout 20s --max-retries 1")
+    print(f"[SCANNER] Arguments: -sV -T4  --host-timeout 20s --max-retries 1")
     print(f"[SCANNER] Note: OS detection uses banner inference (no root required)")
     print(f"[SCANNER] Full scan active — top 1000 ports, 20s host timeout...\n")
 
     nm = nmap.PortScanner()
 
     try:
-        nm.scan(hosts=subnet, arguments='-sV --open -T4  --host-timeout 20s --max-retries 1')
+        nm.scan(hosts=subnet, arguments='-sV  -T4  --host-timeout 20s --max-retries 1')
 
     except nmap.PortScannerError as e:
         error_str = str(e)
 
-        # ✅ FIX: Nmap prints WARNING/NOTE lines to stderr which python-nmap
+        # FIX: Nmap prints WARNING/NOTE lines to stderr which python-nmap
         # incorrectly raises as PortScannerError. These are non-fatal —
         # the scan still completed and results are usable. Only bail out
         # on genuine fatal errors (empty output, nmap not found, etc).
