@@ -53,21 +53,30 @@
     .right-nav-container { margin-left: auto; display: flex; align-items: center; gap: 1.3rem; }
     .nav-icon-link { color: var(--text-muted); font-size: 1.15rem; text-decoration: none; transition: color .15s; }
     .nav-icon-link:hover { color: var(--text-main); }
+.scan-btn { 
+    background: #18377b;
+    border: 1px solid #18377b;
+    color: #fff;
+    font-size: .85rem;
+    font-weight: 600;
+    padding: .45rem 1.1rem;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(24, 55, 123, 0.25);
+    transition: background 0.25s ease,
+                border-color 0.25s ease,
+                transform 0.25s ease,
+                box-shadow 0.25s ease;
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+}
 
-    .scan-btn { 
-      background: #18377b; 
-      border: 1px solid ;
-      color: #fff;
-      font-size: .85rem; font-weight: 600; padding: .45rem 1.1rem; 
-      border-radius: 8px; box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
-      transition: all .15s; display: flex; align-items: center; gap: .45rem;
-    }
-    .scan-btn:hover { 
-      background: #0e1f4d; 
-      border-color: ;
-      transform: translateY(-1px); 
-      box-shadow: 0 0 14px rgba(59, 130, 246, 0.4); 
-    }
+.scan-btn:hover { 
+    background: #0e1f4d;
+    border-color: #0e1f4d;
+    transform: translateY(-1px);
+    box-shadow: 0 0 14px rgba(14, 31, 77, 0.45);
+}
 
     /* ── Collapsible Sidebar ──────────────────────────────────── */
     .sidebar {
@@ -347,11 +356,11 @@
   <a href="/api/alerts-view" class="nav-link {% if 'alerts-view' in request.path %}active{% endif %}">
     <i class="bi bi-bell-fill"></i> Alerts JSON
   </a>
-  <a href="/api/stats-view" class="nav-link {% if 'stats-view' in request.path %}active{% endif %}">
+  <a href="/api/assets-view" class="nav-link {% if request.path == '/api/assets-view' %}active{% endif %}">
     <i class="bi bi-database-fill"></i> Assets JSON
   </a>
-  <a href="/api/health-view" class="nav-link {% if 'health-view' in request.path %}active{% endif %}">
-    <i class="bi bi-bar-chart-fill"></i> Stats JSON
+  <a href="/api/stats-view" class="nav-link {% if 'stats-view' in request.path %}active{% endif %}">
+    <i class="bi bi-bar-chart-fill"></i> Stats & Charts
   </a>
   <a href="/api/health" class="nav-link {% if request.path == '/api/health' %}active{% endif %}">
     <i class="bi bi-heart-pulse-fill"></i> Health

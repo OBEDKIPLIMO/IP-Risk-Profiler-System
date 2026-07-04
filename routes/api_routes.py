@@ -55,12 +55,8 @@ def alerts_view():
 
 @api_bp.route('/stats-view')
 def stats_view():
-    """Renders active system database statistics in clean UI metric cards instead of raw JSON."""
-    try:
-        raw_data = get_stats()
-        return render_template("data_cards.html", title="System Statistics Engine", data_items=raw_data)
-    except Exception as e:
-        return render_template("data_cards.html", title="System Statistics Engine", data_items={"Database Query Failure": str(e)})
+    """Renders the analytics page: stat cards + risk distribution + threat source charts."""
+    return render_template("stats_charts.html")
 
 
 @api_bp.route('/health-view')
@@ -264,3 +260,16 @@ def ack_alert(alert_id):
             }), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@api_bp.route('/assets-view')
+def assets_view_cards():
+    """Renders all discovered assets in clean UI metric cards instead of raw JSON."""
+    try:
+        assets = get_all_assets()
+        data_items = {}
+        for asset in assets:
+            ip = asset.get("ip_address") if isinstance(asset, dict) else getattr(asset, "ip_address", "Unknown IP")
+            data_items[f"Asset: {ip}"] = asset
+        return render_template("data_cards.html", title="Asset Inventory Monitor", data_items=data_items)
+    except Exception as e:
+        return render_template("data_cards.html", title="Asset Inventory Monitor", data_items={"Pipeline Error": str(e)}) 

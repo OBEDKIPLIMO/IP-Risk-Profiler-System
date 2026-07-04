@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Stats & Charts — IP Risk Profiler{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4><i class="bi bi-bar-chart-fill me-2 text-primary"></i>Stats & Charts</h4>
+  <span class="last-updated" id="last-updated">Live analytics</span>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-assets">
+      <div class="stat-icon icon-assets"><i class="bi bi-hdd-network-fill"></i></div>
+      <div><div class="stat-value" id="stat-assets">—</div><div class="stat-label">Total Assets</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-high">
+      <div class="stat-icon icon-high"><i class="bi bi-exclamation-triangle-fill"></i></div>
+      <div><div class="stat-value" id="stat-high">—</div><div class="stat-label">High Alerts</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-medium">
+      <div class="stat-icon icon-medium"><i class="bi bi-dash-circle-fill"></i></div>
+      <div><div class="stat-value" id="stat-medium">—</div><div class="stat-label">Medium Alerts</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card card-avg">
+      <div class="stat-icon icon-avg"><i class="bi bi-graph-up-arrow"></i></div>
+      <div><div class="stat-value" id="stat-avg">—</div><div class="stat-label">Avg Risk Score</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="section-card card">
+      <div class="card-header"><h6><i class="bi bi-bar-chart-fill me-2"></i>Risk Score Distribution</h6></div>
+      <div class="card-body"><canvas id="riskDistributionChart" height="220"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="section-card card">
+      <div class="card-header"><h6><i class="bi bi-pie-chart-fill me-2"></i>Threat Source Breakdown</h6></div>
+      <div class="card-body"><canvas id="threatSourceChart" height="220"></canvas></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+async function loadStatCards() {
+  try {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    document.getElementById('stat-assets').textContent = data.total_assets ?? '—';
+    document.getElementById('stat-high').textContent = data.high_alerts ?? '—';
+    document.getElementById('stat-medium').textContent = data.medium_alerts ?? '—';
+    document.getElementById('stat-avg').textContent = data.avg_risk_score ?? '—';
+  } catch (e) { console.error('Stats error:', e); }
+}
+document.addEventListener('DOMContentLoaded', loadStatCards);
+setInterval(loadStatCards, 60000);
+</script>
+{% endblock %}
