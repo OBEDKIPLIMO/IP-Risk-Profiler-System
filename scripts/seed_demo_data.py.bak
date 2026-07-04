@@ -1,0 +1,471 @@
+"""
+Day 37 - Demo Dataset Seeder
+Automated IP Risk Profiler System
+
+Creates 20 pre-loaded assets and 30 alerts spread evenly across
+Low / Medium / High severity tiers, for UAT walkthroughs and demos.
+
+PLACEMENT:
+    Save this file at:  scripts/seed_demo_data.py
+    (new "scripts" folder at your project root, alongside main.py)
+
+RUN (from project root, same level as main.py):
+    python scripts/seed_demo_data.py
+
+    Optional flags:
+        --seed 42       reproducible random data (same run every time)
+        --force         skip the interactive confirmation prompt
+        -y / --yes      same as --force
+
+MATCHES YOUR ACTUAL (LIVE) SCHEMA:
+    - Asset:        ip_address, hostname, mac_address, open_ports, os_type,
+                     criticality_score, last_seen
+    - ThreatRecord:  ip_address, source_api, severity_score, details_json, queried_at
+    - RiskAlert:     asset_ip, asset_id, threat_record_id, asset_criticality,
+                     threat_severity, risk_score, severity_label, acknowledged,
+                     created_at, updated_at
+
+RiskScore is confirmed legacy/unused — this script does not touch it.
+
+CHANGES IN THIS VERSION
+------------------------
+1. get_session() compatibility:
+   The script no longer assumes a particular implementation. It calls
+   get_session() once and checks whether the result supports the context
+   manager protocol (__enter__/__exit__). If so, it's used as
+   `with get_session() as session:`. If not, it's treated as a plain
+   Session object and closed manually in a try/finally block, exactly
+   as before. No manual edits needed either way.
+
+2. Safety guard against wiping the wrong database:
+   Before deleting anything, the script inspects the SQLAlchemy engine's
+   connection URL (session.get_bind().url) and prints exactly which
+   database file/URL is about to be wiped. If that URL does not look like
+   a dev/demo database (heuristically: contains "dev", "demo", or "test"
+   in the filename, or is an in-memory SQLite DB), the script refuses to
+   run unless --force/--yes is passed. Even when it does look like a
+   dev/demo DB, you get an interactive y/N confirmation showing the exact
+   target unless --force/--yes is passed (e.g. for CI or scripted runs).
+"""
+
+import argparse
+import math
+import random
+import sys
+from contextlib import contextmanager
+from sqlalchemy.orm import Session
+import traceback
+from datetime import datetime, timedelta ,UTC 
+from pathlib import Path
+
+# Allow running this script directly as `python scripts/seed_demo_data.py`
+# from anywhere. Without this, Python only puts the scripts/ folder itself
+# on sys.path, so the project-root "db" package (db/database.py, db/models.py)
+# can't be found. This inserts the project root (the parent of scripts/)
+# at the front of sys.path before the db imports below.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from db.database import get_session
+from db.models import Asset, ThreatRecord, RiskAlert
+
+OS_TYPES = ["Windows Server 2019", "Windows 10", "Ubuntu 22.04", "Debian 11", "IoT/Embedded"]
+THREAT_SOURCES = ["AbuseIPDB", "VirusTotal", "AlienVault OTX"]
+
+# Composite score bands (must match engine/risk_engine.py thresholds)
+TIER_BOUNDS = {"Low": (1, 33), "Medium": (34, 66), "High": (67, 100)}
+
+# Heuristic keywords that suggest a DB is safe to wipe without --force.
+SAFE_DB_HINTS = ("dev", "demo", "test", ":memory:")
+
+
+def severity_range_for_tier(criticality: int, tier: str):
+    """
+    Given an asset's criticality, return the (min, max) severity values
+    (each 1-10) that would land composite = criticality * severity inside
+    the target tier's band. Returns None if no severity value works
+    (e.g. a low-criticality asset can never reach "High").
+    """
+    lo, hi = TIER_BOUNDS[tier]
+    sev_lo = max(1, math.ceil(lo / criticality))
+    sev_hi = min(10, math.floor(hi / criticality))
+    if sev_lo > sev_hi:
+        return None
+    return sev_lo, sev_hi
+
+
+def random_ip(host_octet: int) -> str:
+    # Your scanner targets 192.168.0.0/24. Offset by 150 to land in
+    # .151-.170, clear of router (.1), phone (.100), laptop (.101).
+    return f"192.168.0.{host_octet + 150}"
+
+
+def random_mac() -> str:
+    return ":".join(f"{random.randint(0, 255):02x}" for _ in range(6))
+
+
+def build_assets(session):
+    """
+    20 assets with a guaranteed spread of criticality so every tier
+    (Low/Medium/High) is always reachable by at least a few assets.
+    """
+    criticalities = (
+        [random.randint(1, 3) for _ in range(7)] +   # low-value assets
+        [random.randint(4, 6) for _ in range(7)] +   # mid-value assets
+        [random.randint(7, 10) for _ in range(6)]    # high-value assets
+    )
+    random.shuffle(criticalities)
+
+    assets = []
+    for i, criticality in enumerate(criticalities, start=1):
+        asset = Asset(
+            ip_address=random_ip(i),
+            hostname=f"host-{i:02d}",
+            mac_address=random_mac(),
+            open_ports=random.choice(["22,80", "3389", "3306,80,443", "80", "1433,22"]),
+            os_type=random.choice(OS_TYPES),
+            criticality_score=criticality,
+            last_seen=datetime.now(datetime.UTC) - timedelta(minutes=random.randint(1, 120)),
+        )
+        session.add(asset)
+        assets.append(asset)
+    session.flush()  # populate asset.id before commit
+    return assets
+
+
+def build_alert(session, asset, target_tier):
+    sev_range = severity_range_for_tier(asset.criticality_score, target_tier)
+    severity = random.randint(*sev_range)
+
+    threat = ThreatRecord(
+        ip_address=asset.ip_address,
+        source_api=random.choice(THREAT_SOURCES),
+        severity_score=severity,
+        details_json="{}",
+        queried_at=datetime.now(datetime.UTC) - timedelta(minutes=random.randint(1, 60)),
+    )
+    session.add(threat)
+    session.flush()
+
+    composite = max(1, min(100, round(asset.criticality_score * severity)))
+    acknowledged = random.random() < 0.4
+    created = datetime.now(datetime.UTC) - timedelta(minutes=random.randint(1, 180))
+
+    risk_alert = RiskAlert(
+        asset_ip=asset.ip_address,
+        asset_id=asset.id,
+        threat_record_id=threat.id,
+        asset_criticality=asset.criticality_score,
+        threat_severity=severity,
+        risk_score=composite,
+        severity_label=target_tier,
+        acknowledged=acknowledged,
+        created_at=created,
+        updated_at=created,
+    )
+    session.add(risk_alert)
+
+
+def pick_asset_for_tier(assets, tier):
+    eligible = [a for a in assets if severity_range_for_tier(a.criticality_score, tier)]
+    return random.choice(eligible)
+
+
+# --------------------------------------------------------------------------
+# Session handling — works whether get_session() is a context manager
+# (has __enter__/__exit__) or returns a plain Session object.
+# --------------------------------------------------------------------------
+
+"""
+Day 37 - Demo Dataset Seeder
+Automated IP Risk Profiler System
+
+Creates 20 pre-loaded assets and 30 alerts spread evenly across
+Low / Medium / High severity tiers, for UAT walkthroughs and demos.
+
+PLACEMENT:
+    Save this file at:  scripts/seed_demo_data.py
+    (new "scripts" folder at your project root, alongside main.py)
+
+RUN (from project root, same level as main.py):
+    python scripts/seed_demo_data.py
+
+    Optional flags:
+        --seed 42       reproducible random data (same run every time)
+        --force         skip the interactive confirmation prompt
+        -y / --yes      same as --force
+
+MATCHES YOUR ACTUAL (LIVE) SCHEMA:
+    - Asset:        ip_address, hostname, mac_address, open_ports, os_type,
+                     criticality_score, last_seen
+    - ThreatRecord:  ip_address, source_api, severity_score, details_json, queried_at
+    - RiskAlert:     asset_ip, asset_id, threat_record_id, asset_criticality,
+                     threat_severity, risk_score, severity_label, acknowledged,
+                     created_at, updated_at
+
+RiskScore is confirmed legacy/unused — this script does not touch it.
+
+CHANGES IN THIS VERSION
+------------------------
+1. get_session() compatibility:
+   The script no longer assumes a particular implementation. It calls
+   get_session() once and checks whether the result supports the context
+   manager protocol (__enter__/__exit__). If so, it's used as
+   `with get_session() as session:`. If not, it's treated as a plain
+   Session object and closed manually in a try/finally block, exactly
+   as before. No manual edits needed either way.
+
+2. Safety guard against wiping the wrong database:
+   Before deleting anything, the script inspects the SQLAlchemy engine's
+   connection URL (session.get_bind().url) and prints exactly which
+   database file/URL is about to be wiped. If that URL does not look like
+   a dev/demo database (heuristically: contains "dev", "demo", or "test"
+   in the filename, or is an in-memory SQLite DB), the script refuses to
+   run unless --force/--yes is passed. Even when it does look like a
+   dev/demo DB, you get an interactive y/N confirmation showing the exact
+   target unless --force/--yes is passed (e.g. for CI or scripted runs).
+"""
+
+import argparse
+import math
+import random
+import sys
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from pathlib import Path
+
+# Allow running this script directly as `python scripts/seed_demo_data.py`
+# from anywhere. Without this, Python only puts the scripts/ folder itself
+# on sys.path, so the project-root "db" package (db/database.py, db/models.py)
+# can't be found. This inserts the project root (the parent of scripts/)
+# at the front of sys.path before the db imports below.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from db.database import get_session
+from db.models import Asset, ThreatRecord, RiskAlert
+
+OS_TYPES = ["Windows Server 2019", "Windows 10", "Ubuntu 22.04", "Debian 11", "IoT/Embedded"]
+THREAT_SOURCES = ["AbuseIPDB", "VirusTotal", "AlienVault OTX"]
+
+# Composite score bands (must match engine/risk_engine.py thresholds)
+TIER_BOUNDS = {"Low": (1, 33), "Medium": (34, 66), "High": (67, 100)}
+
+# Heuristic keywords that suggest a DB is safe to wipe without --force.
+SAFE_DB_HINTS = ("dev", "demo", "test", ":memory:")
+
+
+def severity_range_for_tier(criticality: int, tier: str):
+    """
+    Given an asset's criticality, return the (min, max) severity values
+    (each 1-10) that would land composite = criticality * severity inside
+    the target tier's band. Returns None if no severity value works
+    (e.g. a low-criticality asset can never reach "High").
+    """
+    lo, hi = TIER_BOUNDS[tier]
+    sev_lo = max(1, math.ceil(lo / criticality))
+    sev_hi = min(10, math.floor(hi / criticality))
+    if sev_lo > sev_hi:
+        return None
+    return sev_lo, sev_hi
+
+
+def random_ip(host_octet: int) -> str:
+    # Your scanner targets 192.168.0.0/24. Offset by 150 to land in
+    # .151-.170, clear of router (.1), phone (.100), laptop (.101).
+    return f"192.168.0.{host_octet + 150}"
+
+
+def random_mac() -> str:
+    return ":".join(f"{random.randint(0, 255):02x}" for _ in range(6))
+
+
+def build_assets(session):
+    """
+    20 assets with a guaranteed spread of criticality so every tier
+    (Low/Medium/High) is always reachable by at least a few assets.
+    """
+    criticalities = (
+        [random.randint(1, 3) for _ in range(7)] +   # low-value assets
+        [random.randint(4, 6) for _ in range(7)] +   # mid-value assets
+        [random.randint(7, 10) for _ in range(6)]    # high-value assets
+    )
+    random.shuffle(criticalities)
+
+    assets = []
+    for i, criticality in enumerate(criticalities, start=1):
+        asset = Asset(
+            ip_address=random_ip(i),
+            hostname=f"host-{i:02d}",
+            mac_address=random_mac(),
+            open_ports=random.choice(["22,80", "3389", "3306,80,443", "80", "1433,22"]),
+            os_type=random.choice(OS_TYPES),
+            criticality_score=criticality,
+            last_seen=datetime.now(UTC)- timedelta(minutes=random.randint(1, 120)),
+        )
+        session.add(asset)
+        assets.append(asset)
+    session.flush()  # populate asset.id before commit
+    return assets
+
+
+def build_alert(session, asset, target_tier):
+    sev_range = severity_range_for_tier(asset.criticality_score, target_tier)
+    severity = random.randint(*sev_range)
+
+    threat = ThreatRecord(
+        ip_address=asset.ip_address,
+        source_api=random.choice(THREAT_SOURCES),
+        severity_score=severity,
+        details_json="{}",
+        queried_at=datetime.now(UTC)- timedelta(minutes=random.randint(1, 60)),
+    )
+    session.add(threat)
+    session.flush()
+
+    composite = max(1, min(100, round(asset.criticality_score * severity)))
+    acknowledged = random.random() < 0.4
+    created = datetime.now(UTC)- timedelta(minutes=random.randint(1, 180))
+
+    risk_alert = RiskAlert(
+        asset_ip=asset.ip_address,
+        asset_id=asset.id,
+        threat_record_id=threat.id,
+        asset_criticality=asset.criticality_score,
+        threat_severity=severity,
+        risk_score=composite,
+        severity_label=target_tier,
+        acknowledged=acknowledged,
+        created_at=created,
+        updated_at=created,
+    )
+    session.add(risk_alert)
+
+
+def pick_asset_for_tier(assets, tier):
+    eligible = [a for a in assets if severity_range_for_tier(a.criticality_score, tier)]
+    return random.choice(eligible)
+
+
+# --------------------------------------------------------------------------
+# Session handling — works whether get_session() is a context manager
+# (has __enter__/__exit__) or returns a plain Session object.
+# --------------------------------------------------------------------------
+
+@contextmanager
+def session_scope():
+    raw = get_session()
+
+    if hasattr(raw, "__enter__") and hasattr(raw, "__exit__"):
+        with raw as session:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+    else:
+        session = raw
+        try:
+            yield session
+            print(">>> About to COMMIT")
+            session.commit()
+            print(">>> COMMIT succeeded")
+        except Exception as e:
+            print(">>> EXCEPTION OCCURRED")
+            traceback.print_exc()
+            session.rollback()
+            raise
+        finally:
+            print(">>> Closing session")
+            session.close()
+# --------------------------------------------------------------------------
+# Safety guard
+# --------------------------------------------------------------------------
+
+def describe_target_db(session) -> str:
+    """Best-effort human-readable description of the DB about to be wiped."""
+    try:
+        url = session.get_bind().url
+        return str(url)
+    except Exception:
+        return "<unable to determine database URL>"
+
+
+def looks_like_safe_db(db_description: str) -> bool:
+    lowered = db_description.lower()
+    return any(hint in lowered for hint in SAFE_DB_HINTS)
+
+
+def confirm_wipe(db_description: str, force: bool) -> None:
+    """
+    Refuses to proceed unless the target DB looks like a dev/demo DB, or
+    --force/--yes was passed. Always shows the operator exactly what is
+    about to be wiped.
+    """
+    print(f"Target database: {db_description}")
+
+    if force:
+        print("--force/--yes supplied — skipping confirmation.")
+        return
+
+    if not looks_like_safe_db(db_description):
+        print(
+            "\nRefusing to run: this database does not look like a dev/demo/test "
+            "database (no 'dev', 'demo', 'test', or ':memory:' in its URL).\n"
+            "This script WIPES the Asset, ThreatRecord, and RiskAlert tables.\n"
+            "If you're certain this is the right target, re-run with --force.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    answer = input(
+        "\nThis will DELETE all existing Asset, ThreatRecord, and RiskAlert "
+        "rows in the database above and replace them with demo data.\n"
+        "Type 'yes' to continue: "
+    ).strip().lower()
+    if answer != "yes":
+        print("Aborted — no changes made.")
+        sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Seed demo data for the IP Risk Profiler dashboard.")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible demo data.")
+    parser.add_argument(
+        "--force", "-y", "--yes", dest="force", action="store_true",
+        help="Skip the confirmation prompt and safety check (use with care).",
+    )
+    args = parser.parse_args()
+
+    if args.seed is not None:
+        random.seed(args.seed)
+
+    with session_scope() as session:
+        db_description = describe_target_db(session)
+        confirm_wipe(db_description, args.force)
+
+        # Wipe demo tables first (children before parents to respect FKs).
+        # Not committed yet — stays part of the same transaction as the
+        # reseed below, so a failure rolls back to the original state
+        # instead of leaving the tables empty.
+        session.query(RiskAlert).delete()
+        session.query(ThreatRecord).delete()
+        session.query(Asset).delete()
+
+        assets = build_assets(session)
+
+        tiers = ["Low"] * 10 + ["Medium"] * 10 + ["High"] * 10
+        random.shuffle(tiers)
+
+        for tier in tiers:
+            asset = pick_asset_for_tier(assets, tier)
+            build_alert(session, asset, tier)
+
+    print("Demo dataset created: 20 assets, 30 alerts (10 Low / 10 Medium / 10 High).")
+
+
+if __name__ == "__main__":
+    main()
