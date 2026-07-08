@@ -138,6 +138,7 @@ class RiskAlert(Base):
     risk_score        = Column(Float,      nullable=False, default=1.0)
     severity_label    = Column(String(10), nullable=False, default="Low")
     acknowledged      = Column(Boolean,    nullable=False, default=False)
+    acknowledged_at   = Column(DateTime, nullable=True)
     created_at        = Column(DateTime,   nullable=False, default=utc_now)
     updated_at        = Column(DateTime,   nullable=False, default=utc_now, onupdate=utc_now)
 
@@ -155,6 +156,7 @@ class RiskAlert(Base):
             "risk_score":        self.risk_score,
             "severity_label":    self.severity_label,
             "acknowledged":      self.acknowledged,
+            "acknowledged_at":   self.acknowledged_at.isoformat() if self.acknowledged_at else None, 
             "created_at":        self.created_at.isoformat() if self.created_at else None,
             "updated_at":        self.updated_at.isoformat() if self.updated_at else None,
         }

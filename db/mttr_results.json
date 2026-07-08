@@ -1,0 +1,89 @@
+{
+  "scenario_count": 10,
+  "mean_mttr_seconds": 331011.02,
+  "median_mttr_seconds": 366853.68,
+  "mean_mttr_minutes": 5516.85,
+  "scenarios": [
+    {
+      "alert_id": 13,
+      "asset_ip": "192.168.0.155",
+      "severity_label": "Low",
+      "created_at": "2026-07-04T11:41:21.044869",
+      "acknowledged_at": "2026-07-08T18:46:27.070432",
+      "response_time_seconds": 371106.03
+    },
+    {
+      "alert_id": 24,
+      "asset_ip": "192.168.0.155",
+      "severity_label": "Medium",
+      "created_at": "2026-07-04T10:44:21.060571",
+      "acknowledged_at": "2026-07-08T18:42:27.887020",
+      "response_time_seconds": 374286.83
+    },
+    {
+      "alert_id": 2,
+      "asset_ip": "192.168.0.170",
+      "severity_label": "High",
+      "created_at": "2026-07-04T12:56:21.029337",
+      "acknowledged_at": "2026-07-08T18:37:43.381597",
+      "response_time_seconds": 366082.35
+    },
+    {
+      "alert_id": 20,
+      "asset_ip": "192.168.0.155",
+      "severity_label": "High",
+      "created_at": "2026-07-04T12:24:21.054070",
+      "acknowledged_at": "2026-07-08T18:35:42.499360",
+      "response_time_seconds": 367881.45
+    },
+    {
+      "alert_id": 35,
+      "asset_ip": "192.168.0.102",
+      "severity_label": "Low",
+      "created_at": "2026-07-08T17:55:46.878727",
+      "acknowledged_at": "2026-07-08T18:33:02.649935",
+      "response_time_seconds": 2235.77
+    },
+    {
+      "alert_id": 31,
+      "asset_ip": "192.168.0.1",
+      "severity_label": "Low",
+      "created_at": "2026-07-04T13:42:40.427477",
+      "acknowledged_at": "2026-07-08T18:25:23.289096",
+      "response_time_seconds": 362562.86
+    },
+    {
+      "alert_id": 21,
+      "asset_ip": "192.168.0.163",
+      "severity_label": "Medium",
+      "created_at": "2026-07-04T12:52:21.055695",
+      "acknowledged_at": "2026-07-08T18:21:30.538773",
+      "response_time_seconds": 365349.48
+    },
+    {
+      "alert_id": 17,
+      "asset_ip": "192.168.0.156",
+      "severity_label": "Medium",
+      "created_at": "2026-07-04T12:13:21.048925",
+      "acknowledged_at": "2026-07-08T18:20:26.065535",
+      "response_time_seconds": 367625.02
+    },
+    {
+      "alert_id": 5,
+      "asset_ip": "192.168.0.165",
+      "severity_label": "High",
+      "created_at": "2026-07-04T11:11:21.032526",
+      "acknowledged_at": "2026-07-08T18:15:52.019072",
+      "response_time_seconds": 371070.99
+    },
+    {
+      "alert_id": 32,
+      "asset_ip": "192.168.0.100",
+      "severity_label": "Low",
+      "created_at": "2026-07-04T13:42:40.428908",
+      "acknowledged_at": "2026-07-08T18:14:29.853934",
+      "response_time_seconds": 361909.43
+    }
+  ],
+  "generated_at": "2026-07-08T18:47:33.409436"
+}

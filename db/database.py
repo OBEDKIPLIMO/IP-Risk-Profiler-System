@@ -240,21 +240,18 @@ def get_stats():
 
 def acknowledge_alert(alert_id):
     """
-    Marks one alert as acknowledged.
-
-    Args:
-        alert_id (int): the alert's primary key
-
-    Returns:
-        bool: True if found and updated, False if not found
+    Marks one alert as acknowledged and records the acknowledgement timestamp
+    (used for MTTR / MTTA measurement — Day 35).
     """
     session = get_session()
     try:
         alert = session.query(RiskAlert).filter_by(alert_id=alert_id).first()
         if not alert:
             return False
-        alert.acknowledged = True
-        alert.updated_at   = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        alert.acknowledged    = True
+        alert.acknowledged_at = now   # ← dedicated field, never touched again after this
+        alert.updated_at      = now
         session.commit()
         return True
     except Exception as e:
