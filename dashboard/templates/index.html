@@ -16,7 +16,10 @@
       <div class="stat-icon icon-assets"><i class="bi bi-hdd-network-fill"></i></div>
       <div>
         <div class="stat-value" id="stat-assets">—</div>
-        <div class="stat-label">Total Assets</div>
+        <div class="stat-label" data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Number of devices currently discovered on the network by the asset scanner.">
+          Total Assets
+        </div>
       </div>
     </div>
   </div>
@@ -25,7 +28,10 @@
       <div class="stat-icon icon-high"><i class="bi bi-exclamation-triangle-fill"></i></div>
       <div>
         <div class="stat-value" id="stat-high">—</div>
-        <div class="stat-label">High Alerts</div>
+        <div class="stat-label" data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Alerts with a Risk Score in the High range (67–100) — needs immediate analyst attention.">
+        High Alerts
+        </div>
       </div>
     </div>
   </div>
@@ -34,7 +40,10 @@
       <div class="stat-icon icon-medium"><i class="bi bi-dash-circle-fill"></i></div>
       <div>
         <div class="stat-value" id="stat-medium">—</div>
-        <div class="stat-label">Medium Alerts</div>
+       <div class="stat-label" data-bs-toggle="tooltip" data-bs-placement="top"
+       title="Alerts with a Risk Score in the Medium range (34–66).">
+       Medium Alerts
+      </div>
       </div>
     </div>
   </div>
@@ -43,7 +52,10 @@
       <div class="stat-icon icon-avg"><i class="bi bi-graph-up-arrow"></i></div>
       <div>
         <div class="stat-value" id="stat-avg">—</div>
-        <div class="stat-label">Avg Risk Score</div>
+         <div class="stat-label" data-bs-toggle="tooltip" data-bs-placement="top"
+          title="Mean Risk Score across all current alerts, on a scale of 1–100.">
+          Avg Risk Score
+        </div>
       </div>
     </div>
   </div>
@@ -87,21 +99,34 @@
     <div class="table-responsive">
       <table class="table data-table mb-0">
         <thead>
-          <tr>
-            <th onclick="sortBy('asset_ip')"          data-col="asset_ip">
-              IP Address <i class="bi bi-chevron-expand"></i></th>
-            <th onclick="sortBy('asset_criticality')" data-col="asset_criticality">
-              Criticality <i class="bi bi-chevron-expand"></i></th>
-            <th onclick="sortBy('threat_severity')"   data-col="threat_severity">
-              Threat Score <i class="bi bi-chevron-expand"></i></th>
-            <th onclick="sortBy('risk_score')"        data-col="risk_score" class="sorted">
-              Risk Score <i class="bi bi-chevron-down"></i></th>
-            <th onclick="sortBy('severity_label')"    data-col="severity_label">
-              Severity <i class="bi bi-chevron-expand"></i></th>
-            <th onclick="sortBy('updated_at')"        data-col="updated_at">
-              Last Seen <i class="bi bi-chevron-expand"></i></th>
-            <th>Action</th>
-          </tr>
+         <tr>
+  <th onclick="sortBy('asset_ip')" data-col="asset_ip">
+    IP Address <i class="bi bi-chevron-expand"></i></th>
+
+  <th onclick="sortBy('asset_criticality')" data-col="asset_criticality"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Business importance of the internal asset, scored 1–10 (e.g. a database server scores higher than a guest laptop).">
+    Criticality <i class="bi bi-chevron-expand"></i></th>
+
+  <th onclick="sortBy('threat_severity')" data-col="threat_severity"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Reputation score for the external IP, scored 1–10, combining AbuseIPDB, VirusTotal, and AlienVault OTX.">
+    Threat Score <i class="bi bi-chevron-expand"></i></th>
+
+  <th onclick="sortBy('risk_score')" data-col="risk_score" class="sorted"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Composite score = Asset Criticality × Threat Severity. Higher means more urgent.">
+    Risk Score <i class="bi bi-chevron-down"></i></th>
+
+  <th onclick="sortBy('severity_label')" data-col="severity_label"
+      data-bs-toggle="tooltip" data-bs-placement="top"
+      title="Category derived from Risk Score: Low (1–33), Medium (34–66), High (67–100).">
+    Severity <i class="bi bi-chevron-expand"></i></th>
+
+  <th onclick="sortBy('updated_at')" data-col="updated_at">
+    Last Seen <i class="bi bi-chevron-expand"></i></th>
+  <th>Action</th>
+</tr>
         </thead>
         <tbody id="alerts-tbody">
           <tr>

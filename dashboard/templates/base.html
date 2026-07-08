@@ -412,6 +412,14 @@ async function triggerScan() {
 }
 </script>
 
+<script>
+// ── Global tooltip initializer (Bootstrap tooltips require manual init) ──
+document.addEventListener('DOMContentLoaded', () => {
+  const tooltipEls = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  tooltipEls.forEach(el => new bootstrap.Tooltip(el));
+});
+</script>
+
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

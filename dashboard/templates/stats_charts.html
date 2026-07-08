@@ -37,13 +37,23 @@
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="section-card card">
-      <div class="card-header"><h6><i class="bi bi-bar-chart-fill me-2"></i>Risk Score Distribution</h6></div>
+      <div class="card-header">
+        <h6 data-bs-toggle="tooltip" data-bs-placement="top"
+         title="Count of current alerts grouped by severity category.">
+        <i class="bi bi-bar-chart-fill me-2"></i>Risk Score Distribution
+        </h6>
+      </div>
       <div class="card-body"><canvas id="riskDistributionChart" height="220"></canvas></div>
     </div>
   </div>
   <div class="col-lg-6">
     <div class="section-card card">
-      <div class="card-header"><h6><i class="bi bi-pie-chart-fill me-2"></i>Threat Source Breakdown</h6></div>
+      <div class="card-header">
+        <h6 data-bs-toggle="tooltip" data-bs-placement="top"
+        title="Breakdown of which threat intelligence source (AbuseIPDB, VirusTotal, AlienVault OTX) flagged each recorded threat.">
+        <i class="bi bi-pie-chart-fill me-2"></i>Threat Source Breakdown
+        </h6>
+      </div>
       <div class="card-body"><canvas id="threatSourceChart" height="220"></canvas></div>
     </div>
   </div>
