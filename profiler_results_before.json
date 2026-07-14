@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-07-14 14:24:33 UTC",
+  "subnet": "192.168.100.0/24",
+  "ips_profiled": 1,
+  "assets_found": 1,
+  "timings": {
+    "Nmap scan": 27.7984,
+    "DB write (assets)": 0.0616,
+    "AbuseIPDB avg per IP": 7.0751,
+    "VirusTotal avg per IP": 7.3868,
+    "OTX avg per IP": 1.4548,
+    "Sequential total (all APIs, all IPs)": 15.9167,
+    "Risk score calculation (all assets)": 0.0,
+    "Alert generation": 0.0001,
+    "DB write (alerts)": 0.0228
+  },
+  "total_pipeline": 43.7996,
+  "primary_bottleneck": "Nmap scan"
+}

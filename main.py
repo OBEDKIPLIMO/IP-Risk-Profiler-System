@@ -82,7 +82,7 @@ def run_pipeline(subnet):
         print(f"\n[SCHEDULER] Running pipeline for subnet: {subnet}")
 
         from scanner.asset_scanner   import scan_subnet, save_assets_to_db
-        from threat_intel.aggregator import get_composite_threat_score
+        from threat_intel.async_aggregator import get_composite_threat_score
         from engine.alert_engine     import generate_alerts
         from db.database             import save_alerts_to_db
 
