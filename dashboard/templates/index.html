@@ -190,14 +190,14 @@ async function loadStats() {
 
     // Task 24.2 — colour indicator on High Alerts card
     const highCard = document.getElementById('stat-high').closest('.stat-card');
-    if (data.high_alerts > 5) {
-      highCard.style.background = '#fde8e8';   // red — danger level
-      highCard.style.outline    = '2px solid #dc2626';
-    } else {
-      highCard.style.background = '#def7ec';   // green — under control
-      highCard.style.outline    = 'none';
-    }
 
+      highCard.classList.remove('danger-card', 'safe-card');
+
+        if (data.high_alerts > 5) {
+        highCard.classList.add('danger-card');
+        } else {
+         highCard.classList.add('safe-card');
+        }
   } catch(e) { console.error('Stats error:', e); }
 }
 

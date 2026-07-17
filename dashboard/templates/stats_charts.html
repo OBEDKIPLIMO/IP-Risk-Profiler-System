@@ -2,9 +2,18 @@
 {% block title %}Stats & Charts — IP Risk Profiler{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h4><i class="bi bi-bar-chart-fill me-2 text-primary"></i>Stats & Charts</h4>
-  <span class="last-updated" id="last-updated">Live analytics</span>
+<div class="page-header d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-1">
+      <i class="bi bi-bar-chart-fill me-2 text-primary"></i>
+      {{ title }}
+    </h4>
+  </div>
+
+  <a href="/" class="btn btn-sm btn-outline-secondary back-btn-ui">
+    <i class="bi bi-arrow-left me-1"></i>
+    Back to Dashboard
+  </a>
 </div>
 
 <div class="row g-3 mb-4">

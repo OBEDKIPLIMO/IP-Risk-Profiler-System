@@ -32,9 +32,9 @@ def generate_alerts(assets_list, threat_scores_dict):
             "asset_id"         : asset.get("id"),       # may be None — handled safely below
             "hostname"         : asset.get("hostname"),
             "open_ports"       : asset.get("open_ports"),
-            "asset_criticality": float(risk["asset_criticality"]),   # ✅ ensure float
-            "threat_severity"  : float(risk["threat_severity"]),     # ✅ ensure float
-            "risk_score"       : float(risk["composite_score"]),     # ✅ ensure float
+            "asset_criticality": float(risk["asset_criticality"]),   # ensure float
+            "threat_severity"  : float(risk["threat_severity"]),     # ensure float
+            "risk_score"       : float(risk["composite_score"]),     # ensure float
             "severity_label"   : risk["severity_label"],
             "timestamp"        : datetime.now(timezone.utc).isoformat(),
         }
@@ -70,7 +70,7 @@ def save_alerts_to_db(alerts_list):
             ip = a["asset_ip"]
 
             try:
-                # ✅ FIX 1: Wrap the query in no_autoflush so SQLAlchemy does NOT
+                # FIX 1: Wrap the query in no_autoflush so SQLAlchemy does NOT
                 # flush pending inserts before this SELECT. Without this, the first
                 # INSERT is flushed mid-loop, hits a NULL constraint on asset_id/
                 # threat_record_id, and poisons the entire session transaction.
@@ -87,7 +87,7 @@ def save_alerts_to_db(alerts_list):
                     updated += 1
 
                 else:
-                    # ✅ FIX: Do NOT pass alert_id — the column is an auto-increment
+                    # FIX: Do NOT pass alert_id — the column is an auto-increment
                     # Integer in the model, but generate_alerts() builds it as a UUID
                     # string, causing sqlite3.IntegrityError: datatype mismatch.
                     # Letting SQLite generate the integer PK automatically is correct.
@@ -104,7 +104,7 @@ def save_alerts_to_db(alerts_list):
                     inserted += 1
 
             except Exception as row_error:
-                # ✅ FIX 3: Rollback to a clean savepoint after a row error so the
+                #  FIX 3: Rollback to a clean savepoint after a row error so the
                 # session is usable again for subsequent rows instead of staying
                 # poisoned and failing every subsequent insert.
                 session.rollback()

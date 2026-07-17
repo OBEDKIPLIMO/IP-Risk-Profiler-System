@@ -55,9 +55,10 @@ def alerts_view():
 
 @api_bp.route('/stats-view')
 def stats_view():
-    """Renders the analytics page: stat cards + risk distribution + threat source charts."""
-    return render_template("stats_charts.html")
-
+    return render_template(
+        "stats_charts.html",
+        title="Security Analytics Dashboard"
+    )
 
 @api_bp.route('/health-view')
 def health_view():

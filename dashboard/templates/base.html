@@ -105,9 +105,11 @@
 
     /* Static Status Pill Indicator Box */
     .sidebar-status-box {
-      margin: auto 1.2rem 0; background: rgba(255,255,255,0.02);
-      border: 1px solid var(--border-color); padding: .65rem 1rem; border-radius: 6px;
-      display: flex; align-items: center; gap: .5rem;
+    margin: auto 1.2rem 1rem;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border-color);
+    padding: .75rem 1rem;
+    border-radius: 6px;
     }
     .status-dot { width: 7px; height: 7px; background: #22c55e; border-radius: 50%; }
     .status-txt { font-size: .75rem; font-weight: 700; color: #22c55e; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -127,13 +129,87 @@
     }
     .page-header h4 { font-weight: 700; color: #fff; margin: 0; font-size: 1.35rem; }
     .last-updated { font-size: .76rem; color: var(--text-muted); margin-top: 0.3rem; text-align: right; }
-    .back-btn-ui { font-size: .78rem; padding: .35rem .85rem; border-radius: 6px; font-weight: 600; }
+   .back-btn-ui {
+    background: #18377b;
+    border: 1px solid #18377b;
+    color: #fff !important;
+    font-size: .78rem;
+    font-weight: 600;
+    padding: .35rem .85rem;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(24, 55, 123, 0.25);
+    transition: background 0.25s ease,
+                border-color 0.25s ease,
+                transform 0.25s ease,
+                box-shadow 0.25s ease;
+    }
+
+    .back-btn-ui:hover {
+        background: #0e1f4d;
+        border-color: #0e1f4d;
+        color: #fff !important;
+        transform: translateY(-1px);
+        box-shadow: 0 0 14px rgba(14, 31, 77, 0.45);
+    }
+
+    .back-btn-ui:focus,
+    .back-btn-ui:active {
+    background: #0e1f4d !important;
+    border-color: #0e1f4d !important;
+    color: #fff !important;
+    }
 
     /* ── Base Component Cards ──────────────────────────────────── */
     .stat-card {
-      background: var(--card-bg); border: 1px solid var(--border-color);
-      border-radius: 8px; padding: 1.3rem 1.5rem; display: flex; align-items: center; gap: 1.1rem;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.3rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+
+    /* Hover Animation */
+    transition:
+        transform 0.25s ease,
+        box-shadow 0.25s ease,
+        border-color 0.25s ease;
+    cursor: pointer;
+    }
+
+    .stat-card:hover {
+    transform: translateY(-6px) scale(1.03);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.28);
+    }
+
+    /* Individual card glow effects */
+    .card-assets:hover {
+    border-color: #2563eb;
+    box-shadow: 0 12px 28px rgba(37,99,235,0.30);
+    }
+
+    .card-high:hover {
+    border-color: #ef4444;
+    box-shadow: 0 12px 28px rgba(239,68,68,0.30);
+    }
+
+    .card-medium:hover {
+    border-color: #f59e0b;
+    box-shadow: 0 12px 28px rgba(245,158,11,0.30);
+    }
+
+    .card-avg:hover {
+    border-color: #10b981;
+    box-shadow: 0 12px 28px rgba(16,185,129,0.30);
+    }
+
+    .danger-card {
+    border: 2px solid #dc2626;
+    }
+
+    .safe-card {
+    border: 2px solid #16a34a;
     }
     .stat-icon {
       width: 44px; height: 44px; border-radius: 6px;
@@ -302,7 +378,7 @@
         align-items: center;
         gap: .25rem;
     }
-    
+  
     /* ── Footer ───────────────────────────────────────────────── */
     footer {
       margin-left: var(--sidebar-w); text-align: center; font-size: .72rem;
@@ -336,7 +412,6 @@
   </a>
 
   <div class="right-nav-container">
-    <a href="#" class="nav-icon-link"><i class="bi bi-gear"></i></a>
     <button class="btn scan-btn" onclick="triggerScan()">
       Scan Now
     </button>
@@ -369,10 +444,18 @@
     <i class="bi bi-shield-fill-check"></i> Engine Self-Test
   </a>
 
-  <div class="sidebar-status-box">
-    <div class="status-dot"></div>
-    <div class="status-txt">Live</div>
-  </div>
+ <div class="sidebar-status-box">
+    <div>
+        <div class="fw-semibold text-light small">
+            <i class="bi bi-shield-check text-primary me-1"></i>
+            IP Risk Profiler
+        </div>
+        <div class="small text-success">
+            ● Operational
+        </div>
+    </div>
+</div>
+</div>
 </nav>
 
 <main class="main-content">
