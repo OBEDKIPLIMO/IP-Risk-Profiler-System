@@ -1,0 +1,41 @@
+{
+    "generated_at": "2026-07-23T20:01:41.805768",
+    "database": "/home/toro/ip_risk_profiler/IP-Risk-Profiler-System/dev.db",
+    "sample_size": 3,
+    "mean_mttr": 177.224002,
+    "median_mttr": 177.278816,
+    "std_dev": 0.8835029973625819,
+    "minimum": 176.115571,
+    "maximum": 178.277619,
+    "manual_baseline": 196.0,
+    "improvement_percent": 9.579590816326524,
+    "alerts": [
+        {
+            "alert_id": 1,
+            "asset_ip": "192.168.0.1",
+            "severity": "Low",
+            "risk_score": 4.0,
+            "created_at": "2026-07-23 16:58:36.102033",
+            "acknowledged_at": "2026-07-23 17:01:32.217604",
+            "mttr_seconds": 176.115571
+        },
+        {
+            "alert_id": 2,
+            "asset_ip": "192.168.0.100",
+            "severity": "Low",
+            "risk_score": 1.0,
+            "created_at": "2026-07-23 16:58:36.102886",
+            "acknowledged_at": "2026-07-23 17:01:33.381702",
+            "mttr_seconds": 177.278816
+        },
+        {
+            "alert_id": 3,
+            "asset_ip": "192.168.0.101",
+            "severity": "Low",
+            "risk_score": 1.0,
+            "created_at": "2026-07-23 16:58:36.103739",
+            "acknowledged_at": "2026-07-23 17:01:34.381358",
+            "mttr_seconds": 178.277619
+        }
+    ]
+}
